@@ -1,0 +1,257 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* MacMeterApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* MacMeterApp.swift */; };
+		A10000000000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* Models.swift */; };
+		A10000000000000000000003 /* MetricMath.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* MetricMath.swift */; };
+		A10000000000000000000004 /* SettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000004 /* SettingsStore.swift */; };
+		A10000000000000000000005 /* HardwareProviders.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* HardwareProviders.swift */; };
+		A10000000000000000000006 /* MetricsCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* MetricsCoordinator.swift */; };
+		A10000000000000000000007 /* LoginItemManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000007 /* LoginItemManager.swift */; };
+		A10000000000000000000008 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarViews.swift */; };
+		A10000000000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* SettingsView.swift */; };
+		A1000000000000000000000A /* SensorBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* SensorBridge.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* MacMeterApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacMeterApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* MetricMath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricMath.swift; sourceTree = "<group>"; };
+		A20000000000000000000004 /* SettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsStore.swift; sourceTree = "<group>"; };
+		A20000000000000000000005 /* HardwareProviders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HardwareProviders.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* MetricsCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsCoordinator.swift; sourceTree = "<group>"; };
+		A20000000000000000000007 /* LoginItemManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginItemManager.swift; sourceTree = "<group>"; };
+		A20000000000000000000008 /* MenuBarViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarViews.swift; sourceTree = "<group>"; };
+		A20000000000000000000009 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		A2000000000000000000000A /* SensorBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SensorBridge.m; sourceTree = "<group>"; };
+		A2000000000000000000000B /* MacMeterSensors.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacMeterSensors.h; sourceTree = "<group>"; };
+		A2000000000000000000000C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A2000000000000000000000D /* MacMeter.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacMeter.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A30000000000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A40000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000002 /* Sources */,
+				A40000000000000000000006 /* Resources */,
+				A40000000000000000000007 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A40000000000000000000002 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				A40000000000000000000003 /* MacMeter */,
+				A40000000000000000000004 /* MacMeterSensors */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000003 /* MacMeter */ = {
+			isa = PBXGroup;
+			children = (
+				A20000000000000000000001,
+				A20000000000000000000002,
+				A20000000000000000000003,
+				A20000000000000000000004,
+				A20000000000000000000005,
+				A20000000000000000000006,
+				A20000000000000000000007,
+				A20000000000000000000008,
+				A20000000000000000000009,
+			);
+			path = MacMeter;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000004 /* MacMeterSensors */ = {
+			isa = PBXGroup;
+			children = (
+				A2000000000000000000000A,
+				A40000000000000000000005 /* include */,
+			);
+			path = MacMeterSensors;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000005 /* include */ = {
+			isa = PBXGroup;
+			children = (A2000000000000000000000B,);
+			path = include;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000006 /* Resources */ = {
+			isa = PBXGroup;
+			children = (A2000000000000000000000C,);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		A40000000000000000000007 /* Products */ = {
+			isa = PBXGroup;
+			children = (A2000000000000000000000D,);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A50000000000000000000001 /* MacMeter */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A90000000000000000000002 /* Build configuration list for PBXNativeTarget "MacMeter" */;
+			buildPhases = (
+				A60000000000000000000001 /* Sources */,
+				A30000000000000000000001 /* Frameworks */,
+				A60000000000000000000002 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = MacMeter;
+			productName = MacMeter;
+			productReference = A2000000000000000000000D /* MacMeter.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A70000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = { A50000000000000000000001 = { CreatedOnToolsVersion = 26.6; }; };
+			};
+			buildConfigurationList = A90000000000000000000001 /* Build configuration list for PBXProject "MacMeter" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = A40000000000000000000001;
+			productRefGroup = A40000000000000000000007 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (A50000000000000000000001 /* MacMeter */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A60000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001,
+				A10000000000000000000002,
+				A10000000000000000000003,
+				A10000000000000000000004,
+				A10000000000000000000005,
+				A10000000000000000000006,
+				A10000000000000000000007,
+				A10000000000000000000008,
+				A10000000000000000000009,
+				A1000000000000000000000A,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		A80000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A80000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A80000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
+				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = Sources/MacMeterSensors/include/MacMeterSensors.h;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Debug;
+		};
+		A80000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MARKETING_VERSION = 0.1.0;
+				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
+				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = Sources/MacMeterSensors/include/MacMeterSensors.h;
+				SWIFT_STRICT_CONCURRENCY = complete;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A90000000000000000000001 /* Build configuration list for PBXProject "MacMeter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (A80000000000000000000001, A80000000000000000000002);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A90000000000000000000002 /* Build configuration list for PBXNativeTarget "MacMeter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (A80000000000000000000003, A80000000000000000000004);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A70000000000000000000001 /* Project object */;
+}
