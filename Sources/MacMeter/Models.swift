@@ -1,5 +1,23 @@
 import Foundation
 
+struct AppVersionInfo: Equatable {
+    let version: String
+    let build: String
+
+    init(version: String, build: String) {
+        self.version = version
+        self.build = build
+    }
+
+    init(bundle: Bundle = .main) {
+        version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
+        build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+    }
+
+    static var current: AppVersionInfo { AppVersionInfo() }
+    var displayLabel: String { "Version \(version) (\(build))" }
+}
+
 enum MetricAvailability<Value> {
     case available(Value, sampledAt: Date)
     case unavailable(String, observedAt: Date = Date())

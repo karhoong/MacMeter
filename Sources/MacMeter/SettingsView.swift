@@ -3,6 +3,7 @@ import SwiftUI
 struct MacMeterSettingsView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var loginItem: LoginItemManager
+    var appVersion: AppVersionInfo = .current
 
     var body: some View {
         TabView {
@@ -83,7 +84,7 @@ struct MacMeterSettingsView: View {
             Image(systemName: "gauge.with.dots.needle.50percent")
                 .font(.system(size: 48)).foregroundStyle(.tint)
             Text("MacMeter").font(.title2.bold())
-            Text("Version \(version) (\(build))")
+            Text(appVersion.displayLabel)
             Text("Private by design: MacMeter reads local system counters and makes no network requests.")
                 .multilineTextAlignment(.center).foregroundStyle(.secondary)
             Text("Apple Silicon · macOS 13+").font(.caption)
@@ -91,6 +92,4 @@ struct MacMeterSettingsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0" }
-    private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1" }
 }

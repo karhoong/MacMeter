@@ -9,6 +9,11 @@ final class ViewRenderingTests: XCTestCase {
         _ = app.body
     }
 
+    func testVersionLabelIncludesVersionAndBuild() {
+        let version = AppVersionInfo(version: "0.1.0", build: "1")
+        XCTAssertEqual(version.displayLabel, "Version 0.1.0 (1)")
+    }
+
     func testMenuBarModesAndMetricCombinationsRender() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
@@ -69,7 +74,11 @@ final class ViewRenderingTests: XCTestCase {
         for appearance in [ColorScheme.light, .dark] {
             for textSize in [DynamicTypeSize.small, .large, .accessibility3] {
                 XCTAssertNotNil(render(
-                    MeterPopoverView(coordinator: fixture.coordinator, settings: fixture.settings)
+                    MeterPopoverView(
+                        coordinator: fixture.coordinator,
+                        settings: fixture.settings,
+                        appVersion: AppVersionInfo(version: "0.1.0", build: "1")
+                    )
                         .environment(\.colorScheme, appearance)
                         .environment(\.dynamicTypeSize, textSize)
                 ))

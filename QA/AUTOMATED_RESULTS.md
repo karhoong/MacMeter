@@ -7,8 +7,8 @@ Status: automated/local preview checks pass; production release evidence remains
 
 ## Passing
 
-- `bash Scripts/qa.sh`: 50 tests, 0 failures.
-- Production Swift line coverage: 1,213/1,316 (92.17%).
+- `bash Scripts/qa.sh`: 51 tests, 0 failures.
+- Production Swift line coverage: 1,245/1,348 (92.36%).
 - Metric calculation and conversion branches have deterministic boundary tests, including nonzero battery currents from ±1 mA through ±50 mA.
 - Live providers: CPU/topology, physical-interface network rates, and battery power. The M4 Max exposes no valid `SOC MTR Temp`, so temperature correctly reports unavailable rather than substituting another sensor.
 - SoC classifier fixtures: hottest valid `SOC MTR Temp`, duplicate names, rejected `PMU tdie` substitution, invalid values, unrelated sensors, and empty input.

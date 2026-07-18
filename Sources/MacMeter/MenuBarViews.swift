@@ -179,10 +179,18 @@ struct MenuBarLabelView: View {
 struct MeterPopoverView: View {
     @ObservedObject var coordinator: MetricsCoordinator
     @ObservedObject var settings: SettingsStore
+    var appVersion: AppVersionInfo = .current
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("MacMeter").font(.headline)
+            HStack {
+                Text("MacMeter").font(.headline)
+                Spacer()
+                Text(appVersion.displayLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(appVersion.displayLabel)
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     if settings.cpuEnabled { cpuCard }

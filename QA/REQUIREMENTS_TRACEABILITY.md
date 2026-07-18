@@ -20,14 +20,14 @@ Status meanings: **Verified** has current automated or physical evidence; **Part
 | DISP-01 | Independent enable/disable; disabled providers stop polling | Verified | Settings and coordinator provider-count tests |
 | DISP-02 | Compact, Default zones, Cycle every 5 seconds | Verified automated | Mode × all 16 metric combinations render matrix; live five-cycle p95 gate |
 | DISP-03 | Empty selection retains reachable gauge | Verified | All-disabled render coverage and explicit accessibility label |
-| POP-01 | Click opens full readings, core rows, explanations, timestamp, Settings, version and Quit | Verified implementation/render | `MeterPopoverView` and render matrix; direct menu interaction remains manual |
+| POP-01 | Click opens full readings, core rows, explanations, timestamp, Settings, version and Quit | Verified implementation/render | `MeterPopoverView` visibly renders the shared version/build label; exact label and popover render tests; direct menu interaction remains manual |
 | SET-01 | Metrics, CPU convention, network unit, appearance, 1/2/5/10 refresh, login, About/privacy | Verified | `MacMeterSettingsView`, defaults/persistence and rendering tests |
 | SET-02 | Immediate `UserDefaults` persistence with specified defaults | Verified | `SettingsStoreTests` |
 | LOGIN-01 | `SMAppService.mainApp`, approval/denied/not-found states | Verified in isolation; installed flow pending | Injected service tests; signed-installed logout/login requires release artifact |
 | ARCH-01 | Injectable settings, clock, topology, login and hardware providers | Verified | Coordinator/provider initializers and fake-clock/provider/login tests |
 | ARCH-02 | Single non-overlapping sampler; presentation changes do not poll; failures isolate | Verified | Coordinator task/subscription and isolation tests |
 | ARCH-03 | Timestamped availability states | Verified | `MetricAvailability.observedAt` tests and clock-derived transitions |
-| QA-01 | Metric/conversion branches fully exercised; overall line coverage ≥85% | Verified | Semantic branch fixtures; source-only coverage gate in `Scripts/qa.sh` (latest 92.17%) |
+| QA-01 | Metric/conversion branches fully exercised; overall line coverage ≥85% | Verified | Semantic branch fixtures; source-only coverage gate in `Scripts/qa.sh` (latest 92.36%) |
 | QA-02 | CPU tolerance ≤0.1 percentage point; battery ≤0.1 W | Verified | Exact deterministic assertions |
 | QA-03 | Refresh p95 ±200 ms; render p95 <250 ms; cycle 5 s ±200 ms | Verified on M4 | Live hardware timing suite; generated commit/timestamp-bound results in ignored `QA/latest-timing.json` |
 | QA-04 | Light/dark, increased text, constrained layout, all combinations/modes | Verified render automation; manual readability pending | Cartesian render matrix; intrinsic-width checks for every Cycle page without forced clipping |
