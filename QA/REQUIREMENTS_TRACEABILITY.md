@@ -32,7 +32,7 @@ Status meanings: **Verified** has current automated or physical evidence; **Part
 | QA-03 | Refresh p95 ±200 ms; render p95 <250 ms; cycle 5 s ±200 ms | Verified on M4 | Live hardware timing suite; generated commit/timestamp-bound results in ignored `QA/latest-timing.json` |
 | QA-04 | Light/dark, increased text, constrained layout, all combinations/modes | Verified render automation; manual readability pending | Cartesian render matrix; intrinsic-width checks for every Cycle page without forced clipping |
 | QA-05 | VoiceOver announces names, units and full battery direction | Partial | Applied labels and exact semantic string tests; real VoiceOver traversal remains manual |
-| PERF-01 | Idle CPU ≤1% average, p95 ≤3%; RSS ≤80 MiB; ≤5 MiB growth/24 h | Pending elapsed run | Enforced by `Scripts/performance-soak.sh`; default 30-minute warm-up + 24-hour run not complete |
+| PERF-01 | Idle CPU ≤1% average, p95 ≤3%; RSS ≤80 MiB; ≤5 MiB growth/24 h | Pending elapsed run | Harness uses cumulative `proc_pid_rusage` CPU nanoseconds over monotonic intervals and a non-harmonic 59/61-second cadence; default 30-minute warm-up + 24-hour run not complete |
 | PERF-02 | Seven-day soak before 1.0 consideration | Pending elapsed run | Not started; not required to change preview version |
 | DIST-01 | Hardened, Developer ID-signed, notarized/stapled DMG; clean install | Pending external | Enforced packaging script exists; requires owner signing identity and notary profile |
 | PRIV-01 | No telemetry or outbound requests | Verified | Source/framework gate and runtime preview socket check from independent QA |

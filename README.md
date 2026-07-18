@@ -27,7 +27,7 @@ bash Scripts/qa.sh
 
 See `QA/REQUIREMENTS_TRACEABILITY.md` for requirement-by-requirement implementation and release evidence.
 
-The release performance gate is automated by `bash Scripts/performance-soak.sh`: it warms the Release app for 30 minutes, then samples RSS and CPU every minute for 24 hours. Short diagnostic runs can override `MACMETER_WARMUP_SECONDS`, `MACMETER_SOAK_SECONDS`, and `MACMETER_SAMPLE_SECONDS`; only the default full run satisfies the release checklist.
+The release performance gate is automated by `bash Scripts/performance-soak.sh`: it warms the Release app for 30 minutes, then measures RSS and cumulative process CPU time for 24 hours. CPU utilization is derived from `proc_pid_rusage` user+system nanoseconds over actual monotonic intervals; the default 59/61-second alternating cadence avoids phase-locking with MacMeter's two-second refresh. Short diagnostics can override `MACMETER_WARMUP_SECONDS`, `MACMETER_SOAK_SECONDS`, and `MACMETER_SAMPLE_SECONDS`; only the default full run satisfies the release checklist. After a full run, `bash Scripts/verify-performance-evidence.sh` binds the passing result to the current clean commit, hardware, Release binary, native metrics helper, method, cadence, duration, and thresholds.
 
 ## Privacy and distribution
 

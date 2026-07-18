@@ -14,6 +14,7 @@ if [[ -n "$(git status --porcelain)" ]]; then qa_dirty=true; fi
 rm -f "$timing_evidence"
 bash Scripts/test-version-policy.sh
 bash Scripts/test-timing-evidence.sh
+bash Scripts/test-performance-harness.sh
 env XDG_CACHE_HOME="$cache_root/xdg" \
   CLANG_MODULE_CACHE_PATH="$cache_root/clang" \
   SWIFTPM_MODULECACHE_OVERRIDE="$cache_root/clang" \

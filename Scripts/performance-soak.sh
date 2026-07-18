@@ -8,9 +8,24 @@ soak_seconds="${MACMETER_SOAK_SECONDS:-86400}"
 sample_seconds="${MACMETER_SAMPLE_SECONDS:-60}"
 output="${MACMETER_PERFORMANCE_OUTPUT:-$project_root/QA/performance-soak.csv}"
 evidence="${MACMETER_PERFORMANCE_EVIDENCE:-$project_root/QA/latest-performance.json}"
-rss_limit_kib=81920
-growth_limit_kib=5120
-cpu_p95_limit=3.0
+rss_limit_kib="${MACMETER_RSS_LIMIT_KIB:-81920}"
+growth_limit_kib="${MACMETER_GROWTH_LIMIT_KIB:-5120}"
+cpu_average_limit="${MACMETER_CPU_AVERAGE_LIMIT:-1.0}"
+cpu_p95_limit="${MACMETER_CPU_P95_LIMIT:-3.0}"
+
+source "$project_root/Scripts/performance-math.sh"
+
+if ! [[ "$warmup_seconds" =~ ^[0-9]+$ && "$soak_seconds" =~ ^[1-9][0-9]*$ && "$sample_seconds" =~ ^[1-9][0-9]*$ && "$rss_limit_kib" =~ ^[1-9][0-9]*$ && "$growth_limit_kib" =~ ^[0-9]+$ && "$cpu_average_limit" =~ ^[0-9]+([.][0-9]+)?$ && "$cpu_p95_limit" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "Performance durations and thresholds must be nonnegative numbers in their documented units" >&2
+  exit 64
+fi
+
+if [[ -z "${MACMETER_SAMPLE_SECONDS:-}" && "$sample_seconds" == 60 ]]; then
+  sample_cadence=(59 61)
+else
+  sample_cadence=("$sample_seconds")
+fi
+cadence_json="$(printf '%s\n' "${sample_cadence[@]}" | jq -s 'map(tonumber)')"
 
 executable="$app/Contents/MacOS/MacMeter"
 if [[ ! -x "$executable" ]]; then
@@ -18,10 +33,17 @@ if [[ ! -x "$executable" ]]; then
   exit 1
 fi
 
+metrics_binary="$(mktemp /tmp/macmeter-process-metrics.XXXXXX)"
+rm -f "$metrics_binary"
+xcrun clang -O2 -Wall -Wextra -Werror \
+  "$project_root/Scripts/process-metrics.c" -o "$metrics_binary"
+metrics_source_sha256="$(shasum -a 256 "$project_root/Scripts/process-metrics.c" | awk '{print $1}')"
+
+caffeinate -dimsu -w "$$" >/dev/null 2>&1 &
+caffeinate_pid=$!
 "$executable" >/dev/null 2>&1 &
 pid=$!
 cpu_values_file="$(mktemp /tmp/macmeter-cpu-values.XXXXXX)"
-started="$(date +%s)"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 commit="$(git -C "$project_root" rev-parse HEAD)"
 hardware="$(sysctl -n machdep.cpu.brand_string)"
@@ -34,11 +56,16 @@ finalized=false
 failure_reason="unexpected error"
 baseline_rss=""
 maximum_rss=0
-cpu_sum=0
 sample_count=0
 average_cpu=""
 cpu_p95=""
 growth=""
+measurement_duration_seconds=""
+measurement_cpu_start=""
+measurement_wall_start=""
+latest_cpu_ns=""
+latest_wall_ns=""
+latest_rss=""
 
 write_base_evidence() {
   local status="$1"
@@ -48,45 +75,70 @@ write_base_evidence() {
     --arg startedAt "$started_at" \
     --arg hardware "$hardware" \
     --arg binarySHA256 "$binary_sha256" \
+    --arg metricsSourceSHA256 "$metrics_source_sha256" \
     --arg version "$version" \
     --arg build "$build" \
+    --arg cpuMeasurementMethod "proc_pid_rusage cumulative user+system CPU nanoseconds divided by CLOCK_MONOTONIC wall-time deltas" \
     --argjson dirtyWorktree "$dirty" \
     --argjson pid "$pid" \
     --argjson warmupSeconds "$warmup_seconds" \
     --argjson soakSeconds "$soak_seconds" \
     --argjson sampleSeconds "$sample_seconds" \
+    --argjson sampleCadenceSeconds "$cadence_json" \
+    --argjson rssLimitKiB "$rss_limit_kib" \
+    --argjson growthLimitKiB "$growth_limit_kib" \
+    --argjson averageCPUPercentLimit "$cpu_average_limit" \
+    --argjson p95CPUPercentLimit "$cpu_p95_limit" \
     '{status:$status, commit:$commit, startedAt:$startedAt, hardware:$hardware,
-      binarySHA256:$binarySHA256, version:$version, build:$build,
-      dirtyWorktree:$dirtyWorktree, pid:$pid, warmupSeconds:$warmupSeconds,
-      soakSeconds:$soakSeconds, sampleSeconds:$sampleSeconds}' >"$evidence"
+      binarySHA256:$binarySHA256, metricsSourceSHA256:$metricsSourceSHA256,
+      version:$version, build:$build, dirtyWorktree:$dirtyWorktree, pid:$pid,
+      warmupSeconds:$warmupSeconds, soakSeconds:$soakSeconds,
+      sampleSeconds:$sampleSeconds, sampleCadenceSeconds:$sampleCadenceSeconds,
+      cpuMeasurementMethod:$cpuMeasurementMethod,
+      thresholds:{rssLimitKiB:$rssLimitKiB, growthLimitKiB:$growthLimitKiB,
+        averageCPUPercentLimit:$averageCPUPercentLimit,
+        p95CPUPercentLimit:$p95CPUPercentLimit}}' >"$evidence"
 }
 
-write_completed_evidence() {
-  local finished_at
-  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+add_results() {
+  local field="$1"
   jq \
-    --arg status "passed" \
-    --arg finishedAt "$finished_at" \
+    --arg field "$field" \
     --argjson samples "$sample_count" \
     --argjson baselineRSSKiB "$baseline_rss" \
     --argjson maximumRSSKiB "$maximum_rss" \
     --argjson growthKiB "$growth" \
     --argjson averageCPUPercent "$average_cpu" \
     --argjson p95CPUPercent "$cpu_p95" \
-    '. + {status:$status, finishedAt:$finishedAt, results:{samples:$samples,
-      baselineRSSKiB:$baselineRSSKiB, maximumRSSKiB:$maximumRSSKiB,
-      growthKiB:$growthKiB, averageCPUPercent:$averageCPUPercent,
-      p95CPUPercent:$p95CPUPercent}}' "$evidence" >"$evidence.tmp"
+    --argjson measurementDurationSeconds "$measurement_duration_seconds" \
+    '. + {($field):{samples:$samples, baselineRSSKiB:$baselineRSSKiB,
+      maximumRSSKiB:$maximumRSSKiB, growthKiB:$growthKiB,
+      averageCPUPercent:$averageCPUPercent, p95CPUPercent:$p95CPUPercent,
+      measurementDurationSeconds:$measurementDurationSeconds}}' \
+    "$evidence" >"$evidence.tmp"
   mv "$evidence.tmp" "$evidence"
 }
 
+write_completed_evidence() {
+  local finished_at
+  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  jq --arg status "passed" --arg finishedAt "$finished_at" \
+    '. + {status:$status, finishedAt:$finishedAt}' "$evidence" >"$evidence.tmp"
+  mv "$evidence.tmp" "$evidence"
+  add_results "results"
+}
+
 compute_results() {
-  if (( sample_count == 0 )); then return 1; fi
-  average_cpu="$(awk -v sum="$cpu_sum" -v count="$sample_count" 'BEGIN { printf "%.3f", sum / count }')"
-  local p95_index
-  p95_index=$(((95 * sample_count + 99) / 100))
-  cpu_p95="$(sort -n "$cpu_values_file" | sed -n "${p95_index}p")"
+  if (( sample_count == 0 )) || [[ -z "$measurement_cpu_start" || -z "$measurement_wall_start" ]]; then
+    return 1
+  fi
+  local cpu_delta_ns wall_delta_ns
+  cpu_delta_ns=$((latest_cpu_ns - measurement_cpu_start))
+  wall_delta_ns=$((latest_wall_ns - measurement_wall_start))
+  average_cpu="$(cpu_percent_from_deltas "$cpu_delta_ns" "$wall_delta_ns")"
+  cpu_p95="$(nearest_rank_percentile "$cpu_values_file" "$sample_count" 95)"
   growth=$((maximum_rss - baseline_rss))
+  measurement_duration_seconds="$(awk -v wall="$wall_delta_ns" 'BEGIN { printf "%.3f", wall / 1000000000 }')"
 }
 
 write_failed_evidence() {
@@ -101,20 +153,7 @@ write_failed_evidence() {
     '. + {finishedAt:$finishedAt, failureReason:$failureReason, exitCode:$exitCode}' \
     "$evidence" >"$evidence.tmp"
   mv "$evidence.tmp" "$evidence"
-  if compute_results; then
-    jq \
-      --argjson samples "$sample_count" \
-      --argjson baselineRSSKiB "$baseline_rss" \
-      --argjson maximumRSSKiB "$maximum_rss" \
-      --argjson growthKiB "$growth" \
-      --argjson averageCPUPercent "$average_cpu" \
-      --argjson p95CPUPercent "$cpu_p95" \
-      '. + {partialResults:{samples:$samples, baselineRSSKiB:$baselineRSSKiB,
-        maximumRSSKiB:$maximumRSSKiB, growthKiB:$growthKiB,
-        averageCPUPercent:$averageCPUPercent, p95CPUPercent:$p95CPUPercent}}' \
-      "$evidence" >"$evidence.tmp"
-    mv "$evidence.tmp" "$evidence"
-  fi
+  if compute_results; then add_results "partialResults"; fi
 }
 
 fail() {
@@ -129,59 +168,100 @@ cleanup() {
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   fi
-  if [[ "$finalized" != true ]]; then
-    write_failed_evidence "$exit_code" || true
-  fi
-  rm -f "$cpu_values_file"
+  if [[ "$finalized" != true ]]; then write_failed_evidence "$exit_code" || true; fi
+  kill "$caffeinate_pid" 2>/dev/null || true
+  wait "$caffeinate_pid" 2>/dev/null || true
+  rm -f "$cpu_values_file" "$metrics_binary"
   return "$exit_code"
 }
 trap cleanup EXIT
 trap 'failure_reason="interrupted"; exit 130' INT TERM
 
-mkdir -p "$(dirname "$output")"
-mkdir -p "$(dirname "$evidence")"
-printf 'elapsed_seconds,rss_kib,cpu_percent\n' >"$output"
+take_sample() {
+  local metrics
+  if ! metrics="$("$metrics_binary" "$pid" 2>/dev/null)"; then
+    fail "MacMeter exited or process metrics became unavailable during the performance soak"
+  fi
+  IFS=, read -r latest_cpu_ns latest_wall_ns <<<"$metrics"
+  latest_rss="$(ps -o rss= -p "$pid" | awk '{print $1}')"
+  if [[ -z "$latest_rss" ]]; then fail "MacMeter RSS became unavailable during the performance soak"; fi
+}
+
+mkdir -p "$(dirname "$output")" "$(dirname "$evidence")"
+printf 'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,phase\n' >"$output"
 write_base_evidence "running"
 
-measurement_start=$((started + warmup_seconds))
-finish=$((measurement_start + soak_seconds))
-while true; do
-  now="$(date +%s)"
-  if (( now >= finish )); then break; fi
-  if ! kill -0 "$pid" 2>/dev/null; then
-    fail "MacMeter exited during the performance soak"
-  fi
-
-  rss="$(ps -o rss= -p "$pid" | awk '{print $1}')"
-  cpu="$(ps -o %cpu= -p "$pid" | awk '{print $1}')"
-  elapsed=$((now - started))
-  printf '%s,%s,%s\n' "$elapsed" "$rss" "$cpu" >>"$output"
-
-  if (( now >= measurement_start )); then
-    if [[ -z "$baseline_rss" ]]; then baseline_rss="$rss"; fi
-    if (( rss > maximum_rss )); then maximum_rss="$rss"; fi
-    cpu_sum="$(awk -v sum="$cpu_sum" -v value="$cpu" 'BEGIN { printf "%.6f", sum + value }')"
-    printf '%s\n' "$cpu" >>"$cpu_values_file"
-    sample_count=$((sample_count + 1))
-  fi
-  sleep "$sample_seconds"
-done
-
-if (( sample_count == 0 )); then
-  fail "No post-warm-up samples were collected"
+take_sample
+start_wall_ns="$latest_wall_ns"
+previous_cpu_ns="$latest_cpu_ns"
+previous_wall_ns="$latest_wall_ns"
+measurement_target_ns=$((start_wall_ns + warmup_seconds * 1000000000))
+finish_target_ns=$((measurement_target_ns + soak_seconds * 1000000000))
+cadence_index=0
+measurement_started=false
+if (( warmup_seconds == 0 )); then
+  measurement_started=true
+  measurement_cpu_start="$latest_cpu_ns"
+  measurement_wall_start="$latest_wall_ns"
+  baseline_rss="$latest_rss"
+  maximum_rss="$latest_rss"
+  printf '0,%s,0.000,0.000,boundary\n' "$latest_rss" >>"$output"
+else
+  printf '0,%s,0.000,0.000,warmup\n' "$latest_rss" >>"$output"
 fi
 
+while (( latest_wall_ns < finish_target_ns )); do
+  delay="${sample_cadence[$cadence_index]}"
+  cadence_index=$(((cadence_index + 1) % ${#sample_cadence[@]}))
+  target_ns="$finish_target_ns"
+  if [[ "$measurement_started" != true ]]; then target_ns="$measurement_target_ns"; fi
+  remaining_ns=$((target_ns - latest_wall_ns))
+  delay_ns=$((delay * 1000000000))
+  if (( delay_ns > remaining_ns )); then
+    delay=$(((remaining_ns + 999999999) / 1000000000))
+    if (( delay < 1 )); then delay=1; fi
+  fi
+
+  sleep "$delay"
+  take_sample
+  cpu_delta_ns=$((latest_cpu_ns - previous_cpu_ns))
+  wall_delta_ns=$((latest_wall_ns - previous_wall_ns))
+  interval_cpu="$(cpu_percent_from_deltas "$cpu_delta_ns" "$wall_delta_ns")"
+  interval_seconds="$(awk -v wall="$wall_delta_ns" 'BEGIN { printf "%.3f", wall / 1000000000 }')"
+  elapsed_seconds=$(((latest_wall_ns - start_wall_ns) / 1000000000))
+
+  if [[ "$measurement_started" != true && "$latest_wall_ns" -ge "$measurement_target_ns" ]]; then
+    measurement_started=true
+    measurement_cpu_start="$latest_cpu_ns"
+    measurement_wall_start="$latest_wall_ns"
+    baseline_rss="$latest_rss"
+    maximum_rss="$latest_rss"
+    cadence_index=0
+    printf '%s,%s,%s,%s,boundary\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" >>"$output"
+  elif [[ "$measurement_started" == true ]]; then
+    if (( latest_rss > maximum_rss )); then maximum_rss="$latest_rss"; fi
+    printf '%s\n' "$interval_cpu" >>"$cpu_values_file"
+    sample_count=$((sample_count + 1))
+    printf '%s,%s,%s,%s,measurement\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" >>"$output"
+  else
+    printf '%s,%s,%s,%s,warmup\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" >>"$output"
+  fi
+
+  previous_cpu_ns="$latest_cpu_ns"
+  previous_wall_ns="$latest_wall_ns"
+done
+
+if (( sample_count == 0 )); then fail "No post-warm-up samples were collected"; fi
+
 compute_results
-echo "Performance soak: baseline=${baseline_rss}KiB max=${maximum_rss}KiB growth=${growth}KiB averageCPU=${average_cpu}% p95CPU=${cpu_p95}%"
+echo "Performance soak: baseline=${baseline_rss}KiB max=${maximum_rss}KiB growth=${growth}KiB averageCPU=${average_cpu}% p95CPU=${cpu_p95}% duration=${measurement_duration_seconds}s"
 
 if (( maximum_rss > rss_limit_kib )); then
   fail "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"
 fi
-if (( growth > growth_limit_kib )); then
-  fail "RSS growth failed: ${growth}KiB > ${growth_limit_kib}KiB"
-fi
-if ! awk -v cpu="$average_cpu" 'BEGIN { exit !(cpu <= 1.0) }'; then
-  fail "Idle CPU limit failed: ${average_cpu}% > 1.0%"
+if (( growth > growth_limit_kib )); then fail "RSS growth failed: ${growth}KiB > ${growth_limit_kib}KiB"; fi
+if ! awk -v cpu="$average_cpu" -v limit="$cpu_average_limit" 'BEGIN { exit !(cpu <= limit) }'; then
+  fail "Idle CPU limit failed: ${average_cpu}% > ${cpu_average_limit}%"
 fi
 if ! awk -v cpu="$cpu_p95" -v limit="$cpu_p95_limit" 'BEGIN { exit !(cpu <= limit) }'; then
   fail "Idle CPU p95 failed: ${cpu_p95}% > ${cpu_p95_limit}%"

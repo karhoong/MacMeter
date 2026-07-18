@@ -22,7 +22,7 @@
 ## Performance and stability
 
 - [ ] Idle average CPU ≤1%; p95 ≤3% over 30 minutes.
-- [ ] `Scripts/performance-soak.sh` passes after a 30-minute warm-up: RSS ≤80 MiB at every post-warm-up sample, ≤5 MiB growth over 24 hours, idle CPU ≤1% average and ≤3% p95 (60-second cadence).
+- [ ] `Scripts/performance-soak.sh` passes after a 30-minute warm-up: RSS ≤80 MiB at every post-warm-up sample, ≤5 MiB growth over 24 hours, idle CPU ≤1% cumulative average and ≤3% interval p95 (alternating 59/61-second monotonic cadence).
 - [x] Refresh p95 within ±200ms; sample-to-render p95 <250ms.
 - [x] Cycle interval is 5s ±200ms.
 - [ ] Seven-day physical soak completed before owner considers `1.0.0`.
