@@ -8,3 +8,4 @@ xcuserdata/
 *.xcresult
 QA/performance-soak.csv
 QA/latest-timing.json
+QA/latest-performance.json

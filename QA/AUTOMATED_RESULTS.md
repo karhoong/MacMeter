@@ -28,7 +28,7 @@ Status: automated/local preview checks pass; production release evidence remains
 
 ## Outstanding external/long-running release evidence
 
-- Default `Scripts/performance-soak.sh`: 30-minute warm-up plus 24-hour measurement.
+- Default `Scripts/performance-soak.sh`: 30-minute warm-up plus 24-hour measurement. Live SHA/hardware/binary-hash/status/results provenance is generated at ignored `QA/latest-performance.json`.
 - Developer ID signing identity and notarytool profile; notarized/stapled DMG, Gatekeeper assessment, and clean install.
 - Installed-app Launch at Login across approval, denial, logout, and login.
 - M1/M2 laptop and Apple Silicon no-battery desktop.
