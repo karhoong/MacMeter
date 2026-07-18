@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import SwiftUI
 import XCTest
@@ -24,12 +25,23 @@ final class TimingHardwareTests: XCTestCase {
         expectation.expectedFulfillmentCount = 11
         var timestamps: [Date] = []
         var renderLatencies: [TimeInterval] = []
+        var renderFailures = 0
+        let hostingView = NSHostingView(rootView: MenuBarLabelView(coordinator: coordinator, settings: settings))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 44)
+        hostingView.wantsLayer = true
+        hostingView.layoutSubtreeIfNeeded()
 
         coordinator.$lastUpdated.compactMap { $0 }.sink { date in
             timestamps.append(date)
-            let renderer = ImageRenderer(content: MenuBarLabelView(coordinator: coordinator, settings: settings))
-            renderer.scale = 2
-            _ = renderer.nsImage
+            hostingView.needsLayout = true
+            hostingView.needsDisplay = true
+            hostingView.layoutSubtreeIfNeeded()
+            hostingView.displayIfNeeded()
+            if let representation = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) {
+                hostingView.cacheDisplay(in: hostingView.bounds, to: representation)
+            } else {
+                renderFailures += 1
+            }
             renderLatencies.append(Date().timeIntervalSince(date))
             expectation.fulfill()
         }.store(in: &cancellables)
@@ -43,9 +55,15 @@ final class TimingHardwareTests: XCTestCase {
         }
         let refreshP95Error = p95(intervals.map { abs($0 - 1) })
         let renderP95 = p95(renderLatencies)
-        print("MacMeter timing: refreshErrorP95=\(refreshP95Error)s renderP95=\(renderP95)s")
+        print("MacMeter timing: refreshErrorP95=\(refreshP95Error)s hostPaintP95=\(renderP95)s")
+        XCTAssertEqual(renderFailures, 0)
         XCTAssertLessThanOrEqual(refreshP95Error, 0.2)
         XCTAssertLessThan(renderP95, 0.25)
+        writeEvidence(section: "refresh", metrics: [
+            "refreshErrorP95Seconds": refreshP95Error,
+            "hostPaintP95Seconds": renderP95,
+            "renderFailures": Double(renderFailures)
+        ])
     }
 
     func testCycleP95MeetsFiveSecondBudget() async {
@@ -71,6 +89,7 @@ final class TimingHardwareTests: XCTestCase {
         let errorP95 = p95(intervals.map { abs($0 - 5) })
         print("MacMeter cycle timing: errorP95=\(errorP95)s")
         XCTAssertLessThanOrEqual(errorP95, 0.2)
+        writeEvidence(section: "cycle", metrics: ["errorP95Seconds": errorP95])
     }
 
     private func p95(_ values: [Double]) -> Double {
@@ -78,5 +97,30 @@ final class TimingHardwareTests: XCTestCase {
         let sorted = values.sorted()
         let index = max(0, Int(ceil(Double(sorted.count) * 0.95)) - 1)
         return sorted[index]
+    }
+
+    private func writeEvidence(section: String, metrics: [String: Double]) {
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["MACMETER_TIMING_EVIDENCE_PATH"] else { return }
+        let url = URL(fileURLWithPath: path)
+        var evidence: [String: Any] = [:]
+        if let data = try? Data(contentsOf: url),
+           let existing = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            evidence = existing
+        }
+        evidence["commit"] = environment["MACMETER_QA_COMMIT"] ?? "unknown"
+        evidence["startedAt"] = environment["MACMETER_QA_STARTED_AT"] ?? "unknown"
+        evidence["dirtyWorktree"] = environment["MACMETER_QA_DIRTY"] == "true"
+        evidence["hardware"] = "Apple M4 Max"
+        evidence[section] = metrics
+        guard let data = try? JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys]) else {
+            XCTFail("Could not encode timing evidence")
+            return
+        }
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            XCTFail("Could not write timing evidence: \(error)")
+        }
     }
 }

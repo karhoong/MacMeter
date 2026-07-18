@@ -7,3 +7,4 @@ xcuserdata/
 *.dmg
 *.xcresult
 QA/performance-soak.csv
+QA/latest-timing.json

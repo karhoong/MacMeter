@@ -29,8 +29,8 @@ Status meanings: **Verified** has current automated or physical evidence; **Part
 | ARCH-03 | Timestamped availability states | Verified | `MetricAvailability.observedAt` tests and clock-derived transitions |
 | QA-01 | Metric/conversion branches fully exercised; overall line coverage ≥85% | Verified | Semantic branch fixtures; source-only coverage gate in `Scripts/qa.sh` (latest 92.10%) |
 | QA-02 | CPU tolerance ≤0.1 percentage point; battery ≤0.1 W | Verified | Exact deterministic assertions |
-| QA-03 | Refresh p95 ±200 ms; render p95 <250 ms; cycle 5 s ±200 ms | Verified on M4 | Live hardware timing suite; values recorded in `AUTOMATED_RESULTS.md` |
-| QA-04 | Light/dark, increased text, constrained layout, all combinations/modes | Verified render automation; manual readability pending | Cartesian render matrix plus constrained Cycle frame |
+| QA-03 | Refresh p95 ±200 ms; render p95 <250 ms; cycle 5 s ±200 ms | Verified on M4 | Live hardware timing suite; generated commit/timestamp-bound results in ignored `QA/latest-timing.json` |
+| QA-04 | Light/dark, increased text, constrained layout, all combinations/modes | Verified render automation; manual readability pending | Cartesian render matrix; intrinsic-width checks for every Cycle page without forced clipping |
 | QA-05 | VoiceOver announces names, units and full battery direction | Partial | Applied labels and exact semantic string tests; real VoiceOver traversal remains manual |
 | PERF-01 | Idle CPU ≤1% average, p95 ≤3%; RSS ≤80 MiB; ≤5 MiB growth/24 h | Pending elapsed run | Enforced by `Scripts/performance-soak.sh`; default 30-minute warm-up + 24-hour run not complete |
 | PERF-02 | Seven-day soak before 1.0 consideration | Pending elapsed run | Not started; not required to change preview version |

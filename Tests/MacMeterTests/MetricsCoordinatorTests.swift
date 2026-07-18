@@ -204,6 +204,36 @@ final class MetricsCoordinatorTests: XCTestCase {
         controller.stop()
     }
 
+    func testCycleActivityPolicyStopsInactiveAndEmptyModes() {
+        XCTAssertFalse(CycleActivityPolicy.shouldRun(mode: .compact, enabledCount: 4))
+        XCTAssertFalse(CycleActivityPolicy.shouldRun(mode: .default, enabledCount: 4))
+        XCTAssertFalse(CycleActivityPolicy.shouldRun(mode: .cycle, enabledCount: 0))
+        XCTAssertTrue(CycleActivityPolicy.shouldRun(mode: .cycle, enabledCount: 1))
+    }
+
+    func testCycleControllerCancellationAndRestart() async {
+        let clock = BlockingSamplingClock()
+        let controller = CycleController(clock: clock)
+        XCTAssertFalse(controller.isRunning)
+
+        controller.start { 4 }
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertTrue(controller.isRunning)
+        XCTAssertEqual(clock.requestedIntervals, [5])
+
+        controller.start { 4 }
+        for _ in 0..<2 { await Task.yield() }
+        XCTAssertEqual(clock.requestedIntervals, [5], "Starting twice must not add a second cycle task")
+
+        controller.stop()
+        XCTAssertFalse(controller.isRunning)
+        controller.start { 4 }
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertTrue(controller.isRunning)
+        XCTAssertEqual(clock.requestedIntervals, [5, 5])
+        controller.stop()
+    }
+
     private func makeDefaults() -> (value: UserDefaults, cleanup: () -> Void) {
         let suite = "MacMeterCoordinatorTests.\(UUID().uuidString)"
         let value = UserDefaults(suiteName: suite)!
@@ -243,6 +273,16 @@ final class StepSamplingClock: SamplingClock {
         requestedIntervals.append(seconds)
         guard steps > 0 else { throw CancellationError() }
         steps -= 1
+    }
+}
+
+@MainActor
+final class BlockingSamplingClock: SamplingClock {
+    var now = Date(timeIntervalSince1970: 0)
+    private(set) var requestedIntervals: [TimeInterval] = []
+    func sleep(for seconds: TimeInterval) async throws {
+        requestedIntervals.append(seconds)
+        try await Task.sleep(nanoseconds: 3_600_000_000_000)
     }
 }
 

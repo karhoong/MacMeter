@@ -20,6 +20,12 @@ enum MetricAccessibility {
     }
 }
 
+enum CycleActivityPolicy {
+    static func shouldRun(mode: DisplayMode, enabledCount: Int) -> Bool {
+        mode == .cycle && enabledCount > 0
+    }
+}
+
 @MainActor
 final class CycleController: ObservableObject {
     @Published private(set) var index = 0
@@ -27,10 +33,13 @@ final class CycleController: ObservableObject {
     private let clock: SamplingClock
     private var task: Task<Void, Never>?
 
-    init(clock: SamplingClock = SystemSamplingClock(), interval: TimeInterval = 5) {
+    init(clock: SamplingClock = SystemSamplingClock(), interval: TimeInterval = 5, initialIndex: Int = 0) {
         self.clock = clock
         self.interval = interval
+        index = initialIndex
     }
+
+    var isRunning: Bool { task != nil }
 
     func start(enabledCount: @escaping @MainActor () -> Int) {
         guard task == nil else { return }
@@ -73,6 +82,12 @@ struct MenuBarLabelView: View {
         _cycleController = StateObject(wrappedValue: CycleController(clock: cycleClock))
     }
 
+    init(coordinator: MetricsCoordinator, settings: SettingsStore, cycleController: CycleController) {
+        self.coordinator = coordinator
+        self.settings = settings
+        _cycleController = StateObject(wrappedValue: cycleController)
+    }
+
     var body: some View {
         Group {
             if settings.enabledMetrics.isEmpty {
@@ -92,7 +107,7 @@ struct MenuBarLabelView: View {
                 }
             }
         }
-        .font(.system(size: settings.displayMode == .compact ? 9 : 11, weight: .medium, design: .monospaced))
+        .font((settings.displayMode == .compact ? Font.caption2 : Font.caption).monospaced().weight(.medium))
         .lineLimit(1)
         .onAppear {
             updateCycleActivity()
@@ -153,7 +168,7 @@ struct MenuBarLabelView: View {
     }
 
     private func updateCycleActivity() {
-        if settings.displayMode == .cycle, !settings.enabledMetrics.isEmpty {
+        if CycleActivityPolicy.shouldRun(mode: settings.displayMode, enabledCount: settings.enabledMetrics.count) {
             cycleController.start { settings.enabledMetrics.count }
         } else {
             cycleController.stop()

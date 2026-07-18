@@ -16,8 +16,8 @@ Status: automated/local preview checks pass; production release evidence remains
 - Login item service: injected enable, disable, approval-required, not-found, and error paths.
 - Swift 6 Release Xcode build; arm64; bundle `com.karhoong.MacMeter`; `LSUIElement=true`; `0.1.0 (1)`.
 - Static outbound-network source and linked-framework gates.
-- Live M4 timing: refresh p95 error 113.6 ms, sample-to-render p95 101.4 ms, and five-second cycle p95 error 34.7 ms.
-- Render matrix: Compact/Default/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text, plus a constrained Cycle frame.
+- Live M4 timing gates enforce refresh p95 error ≤200 ms, AppKit-host paint p95 <250 ms with a non-nil cached bitmap, and five-second cycle p95 error ≤200 ms. Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
+- Render matrix: Compact/Default/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text. Every Cycle page must fit its intrinsic constrained-width budget without applying clipping in the test.
 
 ## Performance diagnostic
 

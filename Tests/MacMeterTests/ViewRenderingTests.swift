@@ -49,12 +49,17 @@ final class ViewRenderingTests: XCTestCase {
 
         fixture.settings.displayMode = .cycle
         setMetricMask(15, settings: fixture.settings)
-        let constrained = MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)
-            .frame(width: 120, height: 24)
-            .clipped()
-        let constrainedImage = try XCTUnwrap(render(constrained))
-        XCTAssertLessThanOrEqual(constrainedImage.size.width, 136)
-        XCTAssertLessThanOrEqual(constrainedImage.size.height, 40)
+        for metricIndex in 0..<4 {
+            let controller = CycleController(clock: StepSamplingClock(steps: 0), initialIndex: metricIndex)
+            let intrinsic = MenuBarLabelView(
+                coordinator: fixture.coordinator,
+                settings: fixture.settings,
+                cycleController: controller
+            )
+            let intrinsicImage = try XCTUnwrap(render(intrinsic))
+            XCTAssertLessThanOrEqual(intrinsicImage.size.width, 136, "Cycle page \(metricIndex) exceeds constrained width")
+            XCTAssertLessThanOrEqual(intrinsicImage.size.height, 40)
+        }
     }
 
     func testPopoverAndSettingsRenderWithLiveFixtureValues() throws {

@@ -5,12 +5,31 @@ project_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_root"
 
 cache_root="/tmp/macmeter-qa-cache"
+timing_evidence="$project_root/QA/latest-timing.json"
+qa_commit="$(git rev-parse HEAD)"
+qa_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+qa_dirty=false
+if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then qa_dirty=true; fi
+rm -f "$timing_evidence"
 bash Scripts/test-version-policy.sh
 env XDG_CACHE_HOME="$cache_root/xdg" \
   CLANG_MODULE_CACHE_PATH="$cache_root/clang" \
   SWIFTPM_MODULECACHE_OVERRIDE="$cache_root/clang" \
   MACMETER_RUN_HARDWARE_TESTS=1 \
+  MACMETER_TIMING_EVIDENCE_PATH="$timing_evidence" \
+  MACMETER_QA_COMMIT="$qa_commit" \
+  MACMETER_QA_STARTED_AT="$qa_started_at" \
+  MACMETER_QA_DIRTY="$qa_dirty" \
   swift test --enable-code-coverage --cache-path "$cache_root/swiftpm"
+
+test -f "$timing_evidence"
+jq -e --arg commit "$qa_commit" '
+  .commit == $commit
+  and (.refresh.refreshErrorP95Seconds <= 0.2)
+  and (.refresh.hostPaintP95Seconds < 0.25)
+  and (.refresh.renderFailures == 0)
+  and (.cycle.errorP95Seconds <= 0.2)
+' "$timing_evidence" >/dev/null
 
 coverage_json=".build/arm64-apple-macosx/debug/codecov/MacMeter.json"
 test -f "$coverage_json"
