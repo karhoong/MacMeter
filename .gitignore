@@ -9,3 +9,4 @@ xcuserdata/
 QA/performance-soak.csv
 QA/latest-timing.json
 QA/latest-performance.json
+QA/latest-runtime-privacy.json

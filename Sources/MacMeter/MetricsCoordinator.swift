@@ -158,35 +158,43 @@ final class MetricsCoordinator: ObservableObject {
 
     private func setCPUEnabled(_ enabled: Bool) {
         cpuProvider.resetBaseline()
+        let date = clock.now
         guard enabled else {
-            cpu = .unavailable("Disabled", observedAt: clock.now)
+            cpu = .unavailable("Disabled", observedAt: date)
             return
         }
-        cpu = cpuProvider.sample(at: clock.now)
+        cpu = cpuProvider.sample(at: date)
+        if cpu.value != nil { lastUpdated = date }
     }
 
     private func setTemperatureEnabled(_ enabled: Bool) {
+        let date = clock.now
         guard enabled else {
-            temperature = .unavailable("Disabled", observedAt: clock.now)
+            temperature = .unavailable("Disabled", observedAt: date)
             return
         }
-        temperature = temperatureProvider.sample(at: clock.now)
+        temperature = temperatureProvider.sample(at: date)
+        if temperature.value != nil { lastUpdated = date }
     }
 
     private func setNetworkEnabled(_ enabled: Bool) {
         networkProvider.resetBaseline()
+        let date = clock.now
         guard enabled else {
-            network = .unavailable("Disabled", observedAt: clock.now)
+            network = .unavailable("Disabled", observedAt: date)
             return
         }
-        network = networkProvider.sample(at: clock.now)
+        network = networkProvider.sample(at: date)
+        if network.value != nil { lastUpdated = date }
     }
 
     private func setBatteryEnabled(_ enabled: Bool) {
+        let date = clock.now
         guard enabled else {
-            battery = .unavailable("Disabled", observedAt: clock.now)
+            battery = .unavailable("Disabled", observedAt: date)
             return
         }
-        battery = batteryProvider.sample(at: clock.now)
+        battery = batteryProvider.sample(at: date)
+        if battery.value != nil { lastUpdated = date }
     }
 }

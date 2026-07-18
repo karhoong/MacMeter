@@ -101,6 +101,67 @@ final class MetricsCoordinatorTests: XCTestCase {
         defaults.cleanup()
     }
 
+    func testEnablingMetricImmediatelyAdvancesVisibleTimestampWhenFreshDataArrives() async {
+        let defaults = makeDefaults()
+        let settings = SettingsStore(defaults: defaults.value)
+        settings.cpuEnabled = false
+        settings.temperatureEnabled = false
+        settings.networkEnabled = false
+        settings.batteryEnabled = false
+        let clock = FakeSamplingClock(now: Date(timeIntervalSince1970: 100))
+        let coordinator = MetricsCoordinator(
+            settings: settings,
+            cpuProvider: FakeCPUProvider(),
+            temperatureProvider: FakeTemperatureProvider(),
+            networkProvider: FakeNetworkProvider(),
+            batteryProvider: FakeBatteryProvider(),
+            clock: clock,
+            startAutomatically: false
+        )
+
+        XCTAssertNil(coordinator.lastUpdated)
+
+        for (date, enable) in [
+            (Date(timeIntervalSince1970: 101), { settings.cpuEnabled = true }),
+            (Date(timeIntervalSince1970: 102), { settings.temperatureEnabled = true }),
+            (Date(timeIntervalSince1970: 103), { settings.networkEnabled = true }),
+            (Date(timeIntervalSince1970: 104), { settings.batteryEnabled = true })
+        ] {
+            clock.now = date
+            enable()
+            await Task.yield()
+            await Task.yield()
+            XCTAssertEqual(coordinator.lastUpdated, date)
+        }
+
+        defaults.cleanup()
+    }
+
+    func testEnablingUnavailableMetricDoesNotMisrepresentLastUpdate() async {
+        let defaults = makeDefaults()
+        let settings = SettingsStore(defaults: defaults.value)
+        settings.temperatureEnabled = false
+        let initial = Date(timeIntervalSince1970: 200)
+        let clock = FakeSamplingClock(now: initial)
+        let coordinator = MetricsCoordinator(
+            settings: settings,
+            temperatureProvider: UnavailableTemperatureFixture(),
+            clock: clock,
+            startAutomatically: false
+        )
+        coordinator.sampleNow(at: initial)
+        XCTAssertEqual(coordinator.lastUpdated, initial)
+
+        clock.now = Date(timeIntervalSince1970: 201)
+        settings.temperatureEnabled = true
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(coordinator.temperature.reason, "fixture unavailable")
+        XCTAssertEqual(coordinator.lastUpdated, initial)
+        defaults.cleanup()
+    }
+
     func testPresentationChangesDoNotTriggerHardwareSamples() async {
         let defaults = makeDefaults()
         let settings = SettingsStore(defaults: defaults.value)
@@ -320,6 +381,13 @@ final class FakeTemperatureProvider: TemperatureProviding {
     func sample(at date: Date) -> MetricAvailability<TemperatureReading> {
         sampleCount += 1
         return .available(TemperatureReading(hottestCelsius: 55, sensorCount: 2), sampledAt: date)
+    }
+}
+
+@MainActor
+private final class UnavailableTemperatureFixture: TemperatureProviding {
+    func sample(at date: Date) -> MetricAvailability<TemperatureReading> {
+        .unavailable("fixture unavailable", observedAt: date)
     }
 }
 

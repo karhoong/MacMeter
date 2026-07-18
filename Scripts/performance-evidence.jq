@@ -25,6 +25,11 @@ and .thresholds == {
   averageCPUPercentLimit: 1,
   p95CPUPercentLimit: 3
 }
+and .rawCSV.formatVersion == 1
+and (.rawCSV.fileName | type == "string"
+  and test("^[A-Za-z0-9][A-Za-z0-9._-]*$"))
+and (.rawCSV.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
+and (.rawCSV.byteCount | positive_integer)
 and (.results | type == "object")
 and (.results.samples | positive_integer)
 and .results.samples >= 1400

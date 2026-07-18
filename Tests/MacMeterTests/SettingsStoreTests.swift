@@ -26,6 +26,9 @@ final class SettingsStoreTests: XCTestCase {
 
         var settings: SettingsStore? = SettingsStore(defaults: defaults)
         settings?.cpuEnabled = false
+        settings?.temperatureEnabled = false
+        settings?.networkEnabled = false
+        settings?.batteryEnabled = false
         settings?.cpuScale = .summed
         settings?.networkUnit = .Kbps
         settings?.displayMode = .cycle
@@ -34,6 +37,9 @@ final class SettingsStoreTests: XCTestCase {
 
         let restored = SettingsStore(defaults: defaults)
         XCTAssertFalse(restored.cpuEnabled)
+        XCTAssertFalse(restored.temperatureEnabled)
+        XCTAssertFalse(restored.networkEnabled)
+        XCTAssertFalse(restored.batteryEnabled)
         XCTAssertEqual(restored.cpuScale, .summed)
         XCTAssertEqual(restored.networkUnit, .Kbps)
         XCTAssertEqual(restored.displayMode, .cycle)

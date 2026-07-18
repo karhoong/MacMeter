@@ -2,6 +2,74 @@ import XCTest
 @testable import MacMeter
 
 final class MetricMathTests: XCTestCase {
+    func testCalculationAndConversionSemanticDecisionCoverageIsComplete() {
+        var covered = Set<MetricDecisionPath>()
+        let record: (MetricDecisionPath) -> Void = { path in
+            _ = covered.insert(path)
+        }
+
+        let previous = [
+            CPUTicks(user: 10, system: 10, nice: 0, idle: 80),
+            CPUTicks(user: 100, system: 100, nice: 100, idle: 100)
+        ]
+        let current = [
+            CPUTicks(user: 20, system: 10, nice: 0, idle: 90),
+            CPUTicks(user: 1, system: 1, nice: 1, idle: 1)
+        ]
+        _ = MetricMath.cpuReading(current: current, previous: previous, coreKinds: [0: .efficiency], record: record)
+        _ = MetricMath.cpuReading(current: previous, previous: previous, coreKinds: [:], record: record)
+        _ = MetricMath.cpuReading(current: [], previous: [], coreKinds: [:], record: record)
+
+        let base = NetworkCounters(inboundBytes: 100, outboundBytes: 200, interfaces: ["en0"])
+        _ = MetricMath.networkReading(current: base, previous: base, elapsed: 0, record: record)
+        _ = MetricMath.networkReading(
+            current: NetworkCounters(inboundBytes: 110, outboundBytes: 210, interfaces: ["en1"]),
+            previous: base,
+            elapsed: 1,
+            record: record
+        )
+        _ = MetricMath.networkReading(
+            current: NetworkCounters(inboundBytes: 99, outboundBytes: 210, interfaces: ["en0"]),
+            previous: base,
+            elapsed: 1,
+            record: record
+        )
+        _ = MetricMath.networkReading(
+            current: NetworkCounters(inboundBytes: 110, outboundBytes: 199, interfaces: ["en0"]),
+            previous: base,
+            elapsed: 1,
+            record: record
+        )
+        _ = MetricMath.networkReading(
+            current: NetworkCounters(inboundBytes: 110, outboundBytes: 210, interfaces: ["en0"]),
+            previous: base,
+            elapsed: 1,
+            record: record
+        )
+
+        for current in [-1, 0, 1] {
+            _ = MetricMath.batteryPower(voltageMillivolts: 12_000, currentMilliamps: Int64(current), record: record)
+        }
+        for temperature in [Double.nan, -1, 55, 111] {
+            _ = MetricMath.validatedTemperature(temperature, record: record)
+        }
+        _ = MetricFormatting.temperature(55, compact: true, record: record)
+        _ = MetricFormatting.temperature(55, compact: false, record: record)
+        for unit in NetworkUnit.allCases {
+            _ = MetricFormatting.network(bytesPerSecond: 1_250, unit: unit, record: record)
+        }
+        _ = MetricFormatting.decimal(100.4, record: record)
+        _ = MetricFormatting.decimal(30, record: record)
+        _ = MetricFormatting.decimal(8.4, record: record)
+
+        let expected = Set(MetricDecisionPath.allCases)
+        XCTAssertEqual(
+            covered,
+            expected,
+            "Missing semantic decision paths: \(expected.subtracting(covered).map(\.rawValue).sorted())"
+        )
+    }
+
     func testCPUProducesNormalizedSummedAndPerCoreValues() throws {
         let previous = [
             CPUTicks(user: 100, system: 50, nice: 0, idle: 850),

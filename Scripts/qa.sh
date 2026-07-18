@@ -6,15 +6,18 @@ cd "$project_root"
 
 cache_root="/tmp/macmeter-qa-cache"
 timing_evidence="$project_root/QA/latest-timing.json"
+privacy_evidence="$project_root/QA/latest-runtime-privacy.json"
 qa_commit="$(git rev-parse HEAD)"
 qa_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 qa_hardware="$(sysctl -n machdep.cpu.brand_string)"
 qa_dirty=false
 if [[ -n "$(git status --porcelain)" ]]; then qa_dirty=true; fi
 rm -f "$timing_evidence"
+rm -f "$privacy_evidence"
 bash Scripts/test-version-policy.sh
 bash Scripts/test-timing-evidence.sh
 bash Scripts/test-performance-harness.sh
+bash Scripts/test-runtime-privacy-evidence.sh
 env XDG_CACHE_HOME="$cache_root/xdg" \
   CLANG_MODULE_CACHE_PATH="$cache_root/clang" \
   SWIFTPM_MODULECACHE_OVERRIDE="$cache_root/clang" \
@@ -77,5 +80,10 @@ if otool -L "$app/Contents/MacOS/MacMeter" | rg 'CFNetwork|Network\.framework|We
   echo "Unexpected outbound-capable framework linked" >&2
   exit 1
 fi
+
+MACMETER_APP_PATH="$app" \
+  MACMETER_PRIVACY_EVIDENCE="$privacy_evidence" \
+  bash Scripts/runtime-privacy-evidence.sh
+MACMETER_APP_PATH="$app" bash Scripts/verify-runtime-privacy-evidence.sh "$privacy_evidence"
 
 echo "MacMeter QA checks passed: $app"

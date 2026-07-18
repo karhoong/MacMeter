@@ -3,6 +3,7 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 evidence="${1:-$project_root/QA/latest-performance.json}"
+csv_override="${2:-${MACMETER_PERFORMANCE_OUTPUT:-}}"
 app="${MACMETER_APP_PATH:-$project_root/build/DerivedData/Build/Products/Release/MacMeter.app}"
 executable="$app/Contents/MacOS/MacMeter"
 source "$project_root/Scripts/performance-math.sh"
@@ -38,5 +39,13 @@ jq -e \
   --arg build "$build" \
   -f "$project_root/Scripts/performance-evidence.jq" \
   "$evidence" >/dev/null
+
+if [[ -n "$csv_override" ]]; then
+  raw_csv="$csv_override"
+else
+  evidence_directory="$(cd "$(dirname "$evidence")" && pwd)"
+  raw_csv="$evidence_directory/$(jq -er '.rawCSV.fileName' "$evidence")"
+fi
+bash "$project_root/Scripts/verify-performance-csv.sh" "$evidence" "$raw_csv" >/dev/null
 
 echo "Performance evidence validates for $commit"

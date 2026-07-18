@@ -19,6 +19,11 @@ if ! [[ "$warmup_seconds" =~ ^[0-9]+$ && "$soak_seconds" =~ ^[1-9][0-9]*$ && "$s
   echo "Performance durations and thresholds must be nonnegative numbers in their documented units" >&2
   exit 64
 fi
+output_file_name="$(basename "$output")"
+if [[ ! "$output_file_name" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+  echo "Performance CSV filename must contain only letters, numbers, dots, underscores, or hyphens" >&2
+  exit 64
+fi
 
 if [[ -z "${MACMETER_SAMPLE_SECONDS:-}" && "$sample_seconds" == 60 ]]; then
   sample_cadence=(59 61)
@@ -124,12 +129,33 @@ add_results() {
 }
 
 write_completed_evidence() {
-  local finished_at
+  local finished_at csv_sha256 csv_byte_count csv_file_name
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  jq --arg status "passed" --arg finishedAt "$finished_at" \
-    '. + {status:$status, finishedAt:$finishedAt}' "$evidence" >"$evidence.tmp"
+  csv_sha256="$(shasum -a 256 "$output" | awk '{print $1}')"
+  csv_byte_count="$(wc -c <"$output" | tr -d '[:space:]')"
+  csv_file_name="$output_file_name"
+  jq \
+    --arg status "passed" \
+    --arg finishedAt "$finished_at" \
+    --arg csvFileName "$csv_file_name" \
+    --arg csvSHA256 "$csv_sha256" \
+    --argjson csvByteCount "$csv_byte_count" \
+    --argjson samples "$sample_count" \
+    --argjson baselineRSSKiB "$baseline_rss" \
+    --argjson maximumRSSKiB "$maximum_rss" \
+    --argjson growthKiB "$growth" \
+    --argjson averageCPUPercent "$average_cpu" \
+    --argjson p95CPUPercent "$cpu_p95" \
+    --argjson measurementDurationSeconds "$measurement_duration_seconds" \
+    '. + {status:$status, finishedAt:$finishedAt,
+      rawCSV:{formatVersion:1, fileName:$csvFileName,
+        sha256:$csvSHA256, byteCount:$csvByteCount},
+      results:{samples:$samples, baselineRSSKiB:$baselineRSSKiB,
+        maximumRSSKiB:$maximumRSSKiB, growthKiB:$growthKiB,
+        averageCPUPercent:$averageCPUPercent, p95CPUPercent:$p95CPUPercent,
+        measurementDurationSeconds:$measurementDurationSeconds}}' \
+    "$evidence" >"$evidence.tmp"
   mv "$evidence.tmp" "$evidence"
-  add_results "results"
 }
 
 compute_results() {
@@ -203,7 +229,7 @@ take_sample() {
 }
 
 mkdir -p "$(dirname "$output")" "$(dirname "$evidence")"
-printf 'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,phase\n' >"$output"
+printf 'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase\n' >"$output"
 write_base_evidence "running"
 
 take_sample
@@ -220,9 +246,9 @@ if (( warmup_seconds == 0 )); then
   measurement_wall_start="$latest_wall_ns"
   baseline_rss="$latest_rss"
   maximum_rss="$latest_rss"
-  printf '0,%s,0.000,0.000,boundary\n' "$latest_rss" >>"$output"
+  printf '0,%s,0.000,0.000,0,0,boundary\n' "$latest_rss" >>"$output"
 else
-  printf '0,%s,0.000,0.000,warmup\n' "$latest_rss" >>"$output"
+  printf '0,%s,0.000,0.000,0,0,warmup\n' "$latest_rss" >>"$output"
 fi
 
 while (( latest_wall_ns < finish_target_ns )); do
@@ -252,14 +278,14 @@ while (( latest_wall_ns < finish_target_ns )); do
     baseline_rss="$latest_rss"
     maximum_rss="$latest_rss"
     cadence_index=0
-    printf '%s,%s,%s,%s,boundary\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" >>"$output"
+    printf '%s,%s,%s,%s,%s,%s,boundary\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
   elif [[ "$measurement_started" == true ]]; then
     if (( latest_rss > maximum_rss )); then maximum_rss="$latest_rss"; fi
     printf '%s\n' "$interval_cpu" >>"$cpu_values_file"
     sample_count=$((sample_count + 1))
-    printf '%s,%s,%s,%s,measurement\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" >>"$output"
+    printf '%s,%s,%s,%s,%s,%s,measurement\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
   else
-    printf '%s,%s,%s,%s,warmup\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" >>"$output"
+    printf '%s,%s,%s,%s,%s,%s,warmup\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
   fi
 
   previous_cpu_ns="$latest_cpu_ns"
@@ -283,4 +309,7 @@ if ! awk -v cpu="$cpu_p95" -v limit="$cpu_p95_limit" 'BEGIN { exit !(cpu <= limi
 fi
 
 write_completed_evidence
+if ! bash "$project_root/Scripts/verify-performance-csv.sh" "$evidence" "$output" >/dev/null; then
+  fail "Completed performance evidence did not match the raw CSV"
+fi
 finalized=true

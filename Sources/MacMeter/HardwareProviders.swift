@@ -28,6 +28,21 @@ protocol BatteryProviding: AnyObject {
     func sample(at date: Date) -> MetricAvailability<BatteryPowerReading>
 }
 
+struct NetworkInterfaceSnapshot: Equatable {
+    let name: String
+    let isUp: Bool
+    let isRunning: Bool
+    let inboundBytes: UInt64
+    let outboundBytes: UInt64
+}
+
+struct BatteryTelemetry: Equatable {
+    let voltageMillivolts: Int64?
+    let currentMilliamps: Int64?
+    let isCharging: Bool?
+    let isExternalConnected: Bool?
+}
+
 @MainActor
 final class CPUProvider: CPUProviding {
     private var previous: [CPUTicks]?
@@ -138,9 +153,17 @@ final class SoCTemperatureProvider: TemperatureProviding {
 @MainActor
 final class NetworkProvider: NetworkProviding {
     private var previous: (counters: NetworkCounters, date: Date)?
+    private let interfaceReader: @MainActor () -> [NetworkInterfaceSnapshot]?
+
+    init(interfaceReader: @escaping @MainActor () -> [NetworkInterfaceSnapshot]? = NetworkProvider.readInterfaces) {
+        self.interfaceReader = interfaceReader
+    }
 
     func sample(at date: Date) -> MetricAvailability<NetworkReading> {
-        guard let current = readCounters() else { return .unavailable("Network counters could not be read", observedAt: date) }
+        guard let interfaces = interfaceReader() else {
+            return .unavailable("Network counters could not be read", observedAt: date)
+        }
+        let current = Self.aggregate(interfaces)
         defer { previous = (current, date) }
         guard let previous,
               let reading = MetricMath.networkReading(
@@ -155,14 +178,23 @@ final class NetworkProvider: NetworkProviding {
 
     func resetBaseline() { previous = nil }
 
-    private func readCounters() -> NetworkCounters? {
+    static func aggregate(_ interfaces: [NetworkInterfaceSnapshot]) -> NetworkCounters {
+        let active = interfaces.filter { snapshot in
+            snapshot.name.hasPrefix("en") && snapshot.isUp && snapshot.isRunning
+        }
+        return NetworkCounters(
+            inboundBytes: active.reduce(0) { $0 + $1.inboundBytes },
+            outboundBytes: active.reduce(0) { $0 + $1.outboundBytes },
+            interfaces: active.map(\.name).sorted()
+        )
+    }
+
+    private static func readInterfaces() -> [NetworkInterfaceSnapshot]? {
         var addresses: UnsafeMutablePointer<ifaddrs>?
         guard getifaddrs(&addresses) == 0, let first = addresses else { return nil }
         defer { freeifaddrs(addresses) }
 
-        var inbound: UInt64 = 0
-        var outbound: UInt64 = 0
-        var names = Set<String>()
+        var snapshots: [NetworkInterfaceSnapshot] = []
         var cursor: UnsafeMutablePointer<ifaddrs>? = first
         while let entry = cursor {
             defer { cursor = entry.pointee.ifa_next }
@@ -171,40 +203,40 @@ final class NetworkProvider: NetworkProviding {
                   let rawName = entry.pointee.ifa_name else { continue }
             let name = String(cString: rawName)
             let flags = entry.pointee.ifa_flags
-            guard name.hasPrefix("en"),
-                  flags & UInt32(IFF_UP) != 0,
-                  flags & UInt32(IFF_RUNNING) != 0,
-                  let rawData = entry.pointee.ifa_data else { continue }
+            guard let rawData = entry.pointee.ifa_data else { continue }
             let data = rawData.assumingMemoryBound(to: if_data.self).pointee
-            inbound += UInt64(data.ifi_ibytes)
-            outbound += UInt64(data.ifi_obytes)
-            names.insert(name)
+            snapshots.append(NetworkInterfaceSnapshot(
+                name: name,
+                isUp: flags & UInt32(IFF_UP) != 0,
+                isRunning: flags & UInt32(IFF_RUNNING) != 0,
+                inboundBytes: UInt64(data.ifi_ibytes),
+                outboundBytes: UInt64(data.ifi_obytes)
+            ))
         }
-
-        return NetworkCounters(
-            inboundBytes: inbound,
-            outboundBytes: outbound,
-            interfaces: names.sorted()
-        )
+        return snapshots
     }
 }
 
 @MainActor
 final class BatteryPowerProvider: BatteryProviding {
-    func sample(at date: Date) -> MetricAvailability<BatteryPowerReading> {
-        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
-        guard service != 0 else { return .unavailable("This Mac has no battery", observedAt: date) }
-        defer { IOObjectRelease(service) }
+    private let telemetryReader: @MainActor () -> BatteryTelemetry?
 
-        guard let voltage = integerProperty("Voltage", service: service),
-              let current = integerProperty("InstantAmperage", service: service)
-                ?? integerProperty("Amperage", service: service) else {
+    init(telemetryReader: @escaping @MainActor () -> BatteryTelemetry? = BatteryPowerProvider.readTelemetry) {
+        self.telemetryReader = telemetryReader
+    }
+
+    func sample(at date: Date) -> MetricAvailability<BatteryPowerReading> {
+        guard let telemetry = telemetryReader() else {
+            return .unavailable("This Mac has no battery", observedAt: date)
+        }
+        guard let voltage = telemetry.voltageMillivolts,
+              let current = telemetry.currentMilliamps else {
             return .unavailable("Battery voltage or current is unavailable", observedAt: date)
         }
 
         let reading = MetricMath.batteryPower(voltageMillivolts: voltage, currentMilliamps: current)
-        let charging = boolProperty("IsCharging", service: service) ?? false
-        let external = boolProperty("ExternalConnected", service: service) ?? false
+        let charging = telemetry.isCharging ?? false
+        let external = telemetry.isExternalConnected ?? false
         if reading.direction == .charging && (!charging || !external) {
             return .unavailable("Battery power state is inconsistent", observedAt: date)
         }
@@ -214,13 +246,27 @@ final class BatteryPowerProvider: BatteryProviding {
         return .available(reading, sampledAt: date)
     }
 
-    private func integerProperty(_ key: String, service: io_registry_entry_t) -> Int64? {
+    private static func readTelemetry() -> BatteryTelemetry? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+
+        return BatteryTelemetry(
+            voltageMillivolts: integerProperty("Voltage", service: service),
+            currentMilliamps: integerProperty("InstantAmperage", service: service)
+                ?? integerProperty("Amperage", service: service),
+            isCharging: boolProperty("IsCharging", service: service),
+            isExternalConnected: boolProperty("ExternalConnected", service: service)
+        )
+    }
+
+    private static func integerProperty(_ key: String, service: io_registry_entry_t) -> Int64? {
         guard let value = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue(),
               let number = value as? NSNumber else { return nil }
         return number.int64Value
     }
 
-    private func boolProperty(_ key: String, service: io_registry_entry_t) -> Bool? {
+    private static func boolProperty(_ key: String, service: io_registry_entry_t) -> Bool? {
         guard let value = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() else {
             return nil
         }

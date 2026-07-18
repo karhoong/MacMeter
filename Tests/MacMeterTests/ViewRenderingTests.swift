@@ -65,6 +65,23 @@ final class ViewRenderingTests: XCTestCase {
             XCTAssertLessThanOrEqual(intrinsicImage.size.width, 136, "Cycle page \(metricIndex) exceeds constrained width")
             XCTAssertLessThanOrEqual(intrinsicImage.size.height, 40)
         }
+
+        let constrainedBudgets: [(DisplayMode, CGFloat)] = [(.compact, 300), (.default, 480)]
+        for (mode, widthBudget) in constrainedBudgets {
+            fixture.settings.displayMode = mode
+            setMetricMask(15, settings: fixture.settings)
+            for textSize in textSizes {
+                let constrained = MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)
+                    .environment(\.dynamicTypeSize, textSize)
+                let image = try XCTUnwrap(render(constrained))
+                XCTAssertLessThanOrEqual(
+                    image.size.width,
+                    widthBudget,
+                    "\(mode.title) at \(textSize) exceeds its constrained menu-bar budget"
+                )
+                XCTAssertLessThanOrEqual(image.size.height, 40)
+            }
+        }
     }
 
     func testPopoverAndSettingsRenderWithLiveFixtureValues() throws {
