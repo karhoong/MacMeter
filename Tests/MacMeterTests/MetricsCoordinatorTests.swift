@@ -189,6 +189,21 @@ final class MetricsCoordinatorTests: XCTestCase {
         defaults.cleanup()
     }
 
+    func testCycleControllerUsesFiveSecondClockAndAdvancesOnce() async {
+        let clock = StepSamplingClock(steps: 1)
+        let controller = CycleController(clock: clock)
+
+        controller.start { 4 }
+        for _ in 0..<5 { await Task.yield() }
+
+        XCTAssertEqual(clock.requestedIntervals.first, 5)
+        XCTAssertEqual(controller.interval, 5)
+        XCTAssertEqual(controller.index, 1)
+        controller.reset()
+        XCTAssertEqual(controller.index, 0)
+        controller.stop()
+    }
+
     private func makeDefaults() -> (value: UserDefaults, cleanup: () -> Void) {
         let suite = "MacMeterCoordinatorTests.\(UUID().uuidString)"
         let value = UserDefaults(suiteName: suite)!
@@ -215,6 +230,19 @@ final class FakeSamplingClock: SamplingClock {
     init(now: Date) { self.now = now }
     func sleep(for seconds: TimeInterval) async throws {
         try await Task.sleep(nanoseconds: 3_600_000_000_000)
+    }
+}
+
+@MainActor
+final class StepSamplingClock: SamplingClock {
+    var now = Date(timeIntervalSince1970: 0)
+    private var steps: Int
+    private(set) var requestedIntervals: [TimeInterval] = []
+    init(steps: Int) { self.steps = steps }
+    func sleep(for seconds: TimeInterval) async throws {
+        requestedIntervals.append(seconds)
+        guard steps > 0 else { throw CancellationError() }
+        steps -= 1
     }
 }
 

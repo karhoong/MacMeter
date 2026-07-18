@@ -14,25 +14,67 @@ final class ViewRenderingTests: XCTestCase {
         defer { fixture.cleanup() }
 
         for mode in DisplayMode.allCases {
-            fixture.settings.displayMode = mode
-            XCTAssertNotNil(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
+            for mask in 0..<16 {
+                fixture.settings.displayMode = mode
+                setMetricMask(mask, settings: fixture.settings)
+                let image = try XCTUnwrap(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
+                XCTAssertGreaterThan(image.size.width, 0)
+                XCTAssertGreaterThan(image.size.height, 0)
+            }
+        }
+    }
+
+    func testMenuBarAppearanceTextSizeAndConstrainedCycleMatrixRenders() throws {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        let appearances: [ColorScheme] = [.light, .dark]
+        let textSizes: [DynamicTypeSize] = [.small, .large, .accessibility3]
+
+        for mode in DisplayMode.allCases {
+            for mask in 0..<16 {
+                for appearance in appearances {
+                    for textSize in textSizes {
+                        fixture.settings.displayMode = mode
+                        setMetricMask(mask, settings: fixture.settings)
+                        let view = MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)
+                            .environment(\.colorScheme, appearance)
+                            .environment(\.dynamicTypeSize, textSize)
+                        let image = try XCTUnwrap(render(view))
+                        XCTAssertGreaterThan(image.size.width, 0)
+                        XCTAssertLessThanOrEqual(image.size.height, 64)
+                    }
+                }
+            }
         }
 
-        for mask in 0..<16 {
-            fixture.settings.cpuEnabled = mask & 1 != 0
-            fixture.settings.temperatureEnabled = mask & 2 != 0
-            fixture.settings.networkEnabled = mask & 4 != 0
-            fixture.settings.batteryEnabled = mask & 8 != 0
-            XCTAssertNotNil(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
-        }
+        fixture.settings.displayMode = .cycle
+        setMetricMask(15, settings: fixture.settings)
+        let constrained = MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)
+            .frame(width: 120, height: 24)
+            .clipped()
+        let constrainedImage = try XCTUnwrap(render(constrained))
+        XCTAssertLessThanOrEqual(constrainedImage.size.width, 136)
+        XCTAssertLessThanOrEqual(constrainedImage.size.height, 40)
     }
 
     func testPopoverAndSettingsRenderWithLiveFixtureValues() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
 
-        XCTAssertNotNil(render(MeterPopoverView(coordinator: fixture.coordinator, settings: fixture.settings)))
-        XCTAssertNotNil(render(MacMeterSettingsView(settings: fixture.settings, loginItem: LoginItemManager())))
+        for appearance in [ColorScheme.light, .dark] {
+            for textSize in [DynamicTypeSize.small, .large, .accessibility3] {
+                XCTAssertNotNil(render(
+                    MeterPopoverView(coordinator: fixture.coordinator, settings: fixture.settings)
+                        .environment(\.colorScheme, appearance)
+                        .environment(\.dynamicTypeSize, textSize)
+                ))
+                XCTAssertNotNil(render(
+                    MacMeterSettingsView(settings: fixture.settings, loginItem: LoginItemManager())
+                        .environment(\.colorScheme, appearance)
+                        .environment(\.dynamicTypeSize, textSize)
+                ))
+            }
+        }
     }
 
     func testUnavailableStatesRender() {
@@ -54,9 +96,16 @@ final class ViewRenderingTests: XCTestCase {
     }
 
     private func render<V: View>(_ view: V) -> NSImage? {
-        let renderer = ImageRenderer(content: view.padding().frame(minWidth: 120, minHeight: 32))
+        let renderer = ImageRenderer(content: view.padding(8).frame(minWidth: 120, minHeight: 32))
         renderer.scale = 2
         return renderer.nsImage
+    }
+
+    private func setMetricMask(_ mask: Int, settings: SettingsStore) {
+        settings.cpuEnabled = mask & 1 != 0
+        settings.temperatureEnabled = mask & 2 != 0
+        settings.networkEnabled = mask & 4 != 0
+        settings.batteryEnabled = mask & 8 != 0
     }
 
     private func makeFixture() -> (settings: SettingsStore, coordinator: MetricsCoordinator, cleanup: () -> Void) {

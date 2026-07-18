@@ -25,6 +25,8 @@ For a production DMG, set `MACMETER_SIGN_IDENTITY` and a `notarytool` keychain p
 bash Scripts/qa.sh
 ```
 
+See `QA/REQUIREMENTS_TRACEABILITY.md` for requirement-by-requirement implementation and release evidence.
+
 The release performance gate is automated by `bash Scripts/performance-soak.sh`: it warms the Release app for 30 minutes, then samples RSS and CPU every minute for 24 hours. Short diagnostic runs can override `MACMETER_WARMUP_SECONDS`, `MACMETER_SOAK_SECONDS`, and `MACMETER_SAMPLE_SECONDS`; only the default full run satisfies the release checklist.
 
 ## Privacy and distribution

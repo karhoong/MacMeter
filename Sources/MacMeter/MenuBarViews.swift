@@ -2,11 +2,76 @@ import AppKit
 import Combine
 import SwiftUI
 
+enum MetricAccessibility {
+    static func cpu(_ value: Double) -> String {
+        "CPU utilization \(MetricFormatting.percent(value))"
+    }
+
+    static func temperature(_ value: Double) -> String {
+        "SoC temperature \(MetricFormatting.temperature(value))"
+    }
+
+    static func network(_ reading: NetworkReading, unit: NetworkUnit) -> String {
+        "Network inbound \(MetricFormatting.network(bytesPerSecond: reading.inboundBytesPerSecond, unit: unit)) \(unit.rawValue), outbound \(MetricFormatting.network(bytesPerSecond: reading.outboundBytesPerSecond, unit: unit)) \(unit.rawValue)"
+    }
+
+    static func battery(_ reading: BatteryPowerReading) -> String {
+        "Battery \(reading.direction.spokenLabel), \(MetricFormatting.decimal(reading.watts)) watts"
+    }
+}
+
+@MainActor
+final class CycleController: ObservableObject {
+    @Published private(set) var index = 0
+    let interval: TimeInterval
+    private let clock: SamplingClock
+    private var task: Task<Void, Never>?
+
+    init(clock: SamplingClock = SystemSamplingClock(), interval: TimeInterval = 5) {
+        self.clock = clock
+        self.interval = interval
+    }
+
+    func start(enabledCount: @escaping @MainActor () -> Int) {
+        guard task == nil else { return }
+        let clock = self.clock
+        let interval = self.interval
+        task = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await clock.sleep(for: interval)
+                } catch {
+                    return
+                }
+                guard let self, !Task.isCancelled else { return }
+                index = CycleSequence.nextIndex(current: index, enabledCount: enabledCount())
+            }
+        }
+    }
+
+    func reset() { index = 0 }
+
+    func stop() {
+        task?.cancel()
+        task = nil
+    }
+}
+
+@MainActor
 struct MenuBarLabelView: View {
     @ObservedObject var coordinator: MetricsCoordinator
     @ObservedObject var settings: SettingsStore
-    @State private var cycleIndex = 0
-    private let cycleTimer = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
+    @StateObject private var cycleController: CycleController
+
+    init(
+        coordinator: MetricsCoordinator,
+        settings: SettingsStore,
+        cycleClock: SamplingClock = SystemSamplingClock()
+    ) {
+        self.coordinator = coordinator
+        self.settings = settings
+        _cycleController = StateObject(wrappedValue: CycleController(clock: cycleClock))
+    }
 
     var body: some View {
         Group {
@@ -14,13 +79,13 @@ struct MenuBarLabelView: View {
                 Image(systemName: "gauge.with.dots.needle.33percent")
                     .accessibilityLabel("MacMeter. No metrics enabled")
             } else if settings.displayMode == .cycle {
-                metricView(settings.enabledMetrics[cycleIndex % settings.enabledMetrics.count], compact: true)
+                metricView(settings.enabledMetrics[cycleController.index % settings.enabledMetrics.count], compact: true)
                     .frame(minWidth: 72)
             } else {
                 HStack(spacing: settings.displayMode == .compact ? 3 : 5) {
                     ForEach(Array(settings.enabledMetrics.enumerated()), id: \.element.id) { index, metric in
                         if index > 0 && settings.displayMode == .default {
-                            Text("|").foregroundStyle(.secondary)
+                            Text("|").foregroundStyle(.secondary).accessibilityHidden(true)
                         }
                         metricView(metric, compact: settings.displayMode == .compact)
                     }
@@ -29,13 +94,18 @@ struct MenuBarLabelView: View {
         }
         .font(.system(size: settings.displayMode == .compact ? 9 : 11, weight: .medium, design: .monospaced))
         .lineLimit(1)
-        .onReceive(cycleTimer) { _ in
-            guard settings.displayMode == .cycle, !settings.enabledMetrics.isEmpty else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                cycleIndex = CycleSequence.nextIndex(current: cycleIndex, enabledCount: settings.enabledMetrics.count)
-            }
+        .onAppear {
+            updateCycleActivity()
         }
-        .onChange(of: settings.enabledMetrics) { _ in cycleIndex = 0 }
+        .onDisappear { cycleController.stop() }
+        .onChange(of: settings.enabledMetrics) { _ in
+            cycleController.reset()
+            updateCycleActivity()
+        }
+        .onChange(of: settings.displayMode) { _ in
+            cycleController.reset()
+            updateCycleActivity()
+        }
     }
 
     @ViewBuilder
@@ -45,21 +115,21 @@ struct MenuBarLabelView: View {
             if let reading = coordinator.cpu.value {
                 let value = settings.cpuScale == .normalized ? reading.normalized : reading.summed
                 Text("\(compact ? "C" : "CPU") \(MetricFormatting.percent(value))")
-                    .accessibilityLabel("CPU utilization \(MetricFormatting.percent(value))")
+                    .accessibilityLabel(MetricAccessibility.cpu(value))
             } else {
                 Text("\(compact ? "C" : "CPU") —").accessibilityLabel("CPU unavailable")
             }
         case .temperature:
             if let reading = coordinator.temperature.value {
                 Text("\(compact ? "T" : "SoC") \(MetricFormatting.temperature(reading.hottestCelsius, compact: compact))")
-                    .accessibilityLabel("SoC temperature \(MetricFormatting.temperature(reading.hottestCelsius))")
+                    .accessibilityLabel(MetricAccessibility.temperature(reading.hottestCelsius))
             } else {
                 Text("\(compact ? "T" : "SoC") —").accessibilityLabel("SoC temperature unavailable")
             }
         case .network:
             if let reading = coordinator.network.value {
                 Text(MetricFormatting.networkPair(reading, unit: settings.networkUnit))
-                    .accessibilityLabel("Network download \(MetricFormatting.network(bytesPerSecond: reading.inboundBytesPerSecond, unit: settings.networkUnit)) \(settings.networkUnit.rawValue), upload \(MetricFormatting.network(bytesPerSecond: reading.outboundBytesPerSecond, unit: settings.networkUnit)) \(settings.networkUnit.rawValue)")
+                    .accessibilityLabel(MetricAccessibility.network(reading, unit: settings.networkUnit))
             } else {
                 Text("↓— ↑—").accessibilityLabel("Network speed unavailable")
             }
@@ -67,7 +137,7 @@ struct MenuBarLabelView: View {
             if let reading = coordinator.battery.value {
                 Text(MetricFormatting.battery(reading))
                     .foregroundStyle(color(for: reading.direction))
-                    .accessibilityLabel("Battery \(reading.direction.spokenLabel), \(MetricFormatting.decimal(reading.watts)) watts")
+                    .accessibilityLabel(MetricAccessibility.battery(reading))
             } else {
                 Text("—").foregroundStyle(.secondary).accessibilityLabel("Battery power unavailable")
             }
@@ -79,6 +149,14 @@ struct MenuBarLabelView: View {
         case .charging: return .green
         case .draining: return .red
         case .idle: return .secondary
+        }
+    }
+
+    private func updateCycleActivity() {
+        if settings.displayMode == .cycle, !settings.enabledMetrics.isEmpty {
+            cycleController.start { settings.enabledMetrics.count }
+        } else {
+            cycleController.stop()
         }
     }
 }
@@ -177,6 +255,8 @@ struct MeterPopoverView: View {
                         .font(.headline.monospacedDigit())
                         .foregroundStyle(reading.direction == .charging ? .green : reading.direction == .draining ? .red : .secondary)
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(MetricAccessibility.battery(reading))
             } else {
                 UnavailableView(reason: coordinator.battery.reason)
             }

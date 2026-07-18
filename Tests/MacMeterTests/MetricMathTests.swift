@@ -28,6 +28,7 @@ final class MetricMathTests: XCTestCase {
     func testCPURejectsMismatchedCounterSets() {
         let ticks = CPUTicks(user: 1, system: 1, nice: 0, idle: 8)
         XCTAssertNil(MetricMath.cpuReading(current: [ticks], previous: [], coreKinds: [:]))
+        XCTAssertNil(MetricMath.cpuReading(current: [], previous: [], coreKinds: [:]))
     }
 
     func testCPUCounterResetDoesNotCreateNegativeUsage() throws {
@@ -35,6 +36,14 @@ final class MetricMathTests: XCTestCase {
         let previous = [CPUTicks(user: 100, system: 100, nice: 0, idle: 100)]
         let reading = try XCTUnwrap(MetricMath.cpuReading(current: current, previous: previous, coreKinds: [:]))
         XCTAssertEqual(reading.normalized, 0)
+        XCTAssertEqual(reading.cores.first?.kind, .unknown)
+    }
+
+    func testCPUUnchangedCountersProduceZeroUtilization() throws {
+        let ticks = [CPUTicks(user: 20, system: 10, nice: 5, idle: 100)]
+        let reading = try XCTUnwrap(MetricMath.cpuReading(current: ticks, previous: ticks, coreKinds: [:]))
+        XCTAssertEqual(reading.normalized, 0)
+        XCTAssertEqual(reading.summed, 0)
     }
 
     func testNetworkDeltaUsesElapsedTime() throws {
@@ -49,8 +58,12 @@ final class MetricMathTests: XCTestCase {
         let previous = NetworkCounters(inboundBytes: 1_000, outboundBytes: 2_000, interfaces: ["en0"])
         let changedInterface = NetworkCounters(inboundBytes: 2_000, outboundBytes: 3_000, interfaces: ["en1"])
         let reset = NetworkCounters(inboundBytes: 10, outboundBytes: 20, interfaces: ["en0"])
+        let inboundReset = NetworkCounters(inboundBytes: 10, outboundBytes: 3_000, interfaces: ["en0"])
+        let outboundReset = NetworkCounters(inboundBytes: 3_000, outboundBytes: 20, interfaces: ["en0"])
         XCTAssertNil(MetricMath.networkReading(current: changedInterface, previous: previous, elapsed: 2))
         XCTAssertNil(MetricMath.networkReading(current: reset, previous: previous, elapsed: 2))
+        XCTAssertNil(MetricMath.networkReading(current: inboundReset, previous: previous, elapsed: 2))
+        XCTAssertNil(MetricMath.networkReading(current: outboundReset, previous: previous, elapsed: 2))
         XCTAssertNil(MetricMath.networkReading(current: previous, previous: previous, elapsed: 0))
     }
 
@@ -83,14 +96,28 @@ final class MetricMathTests: XCTestCase {
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000_000, unit: .Mbps), "8")
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000, unit: .KBps), "1")
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000, unit: .Kbps), "8")
+        let reading = NetworkReading(inboundBytesPerSecond: 1_000_000, outboundBytesPerSecond: 200_000, interfaces: ["en0"])
+        XCTAssertEqual(MetricFormatting.networkPair(reading, unit: .MBps), "↓1 ↑0.2 MBps")
+    }
+
+    func testFormattingCoversRoundedCompactIntegerDecimalAndLargeValues() {
+        XCTAssertEqual(MetricFormatting.percent(42.6), "43%")
+        XCTAssertEqual(MetricFormatting.temperature(61.6), "62°C")
+        XCTAssertEqual(MetricFormatting.temperature(61.6, compact: true), "62°")
+        XCTAssertEqual(MetricFormatting.decimal(100.4), "100")
+        XCTAssertEqual(MetricFormatting.decimal(30), "30")
+        XCTAssertEqual(MetricFormatting.decimal(8.44), "8.4")
     }
 
     func testTemperatureValidation() {
         XCTAssertEqual(MetricMath.validatedTemperature(65.2), 65.2)
+        XCTAssertEqual(MetricMath.validatedTemperature(0), 0)
+        XCTAssertEqual(MetricMath.validatedTemperature(110), 110)
         XCTAssertNil(MetricMath.validatedTemperature(-1))
         XCTAssertNil(MetricMath.validatedTemperature(110.1))
         XCTAssertNil(MetricMath.validatedTemperature(.nan))
         XCTAssertNil(MetricMath.validatedTemperature(.infinity))
+        XCTAssertNil(MetricMath.validatedTemperature(-.infinity))
     }
 
     func testCycleSequenceWrapsAndStopsForOneMetric() {

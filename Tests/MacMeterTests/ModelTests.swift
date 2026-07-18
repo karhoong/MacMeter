@@ -36,6 +36,21 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(BatteryDirection.idle.spokenLabel, "Idle")
     }
 
+    func testMetricAccessibilityLabelsContainNamesUnitsAndDirection() {
+        XCTAssertEqual(MetricAccessibility.cpu(42), "CPU utilization 42%")
+        XCTAssertEqual(MetricAccessibility.temperature(61), "SoC temperature 61°C")
+        let network = NetworkReading(inboundBytesPerSecond: 1_000_000, outboundBytesPerSecond: 250_000, interfaces: ["en0"])
+        XCTAssertEqual(MetricAccessibility.network(network, unit: .Mbps), "Network inbound 8 Mbps, outbound 2 Mbps")
+        XCTAssertEqual(
+            MetricAccessibility.battery(BatteryPowerReading(watts: 8.4, direction: .draining)),
+            "Battery Draining, 8.4 watts"
+        )
+        XCTAssertEqual(
+            MetricAccessibility.battery(BatteryPowerReading(watts: 30, direction: .charging)),
+            "Battery Charging, 30 watts"
+        )
+    }
+
     func testSettingTitlesAndIdentifiers() {
         XCTAssertEqual(CPUScale.normalized.title, "Overall (0–100%)")
         XCTAssertEqual(CPUScale.summed.title, "All cores (n×100%)")
