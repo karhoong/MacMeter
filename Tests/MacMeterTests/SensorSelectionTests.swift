@@ -3,9 +3,8 @@ import MacMeterSensors
 import XCTest
 
 final class SensorSelectionTests: XCTestCase {
-    func testNamedSoCSensorsTakePriorityOverHotterPMUDieSensors() throws {
+    func testNamedSoCSensorsChooseHottestValidValue() throws {
         let result = select([
-            ("PMU tdie1", 91),
             ("SOC MTR Temp Sensor 0", 62),
             ("SOC MTR Temp Sensor 1", 67)
         ])
@@ -13,15 +12,21 @@ final class SensorSelectionTests: XCTestCase {
         XCTAssertEqual(result.count, 2)
     }
 
-    func testPMUFallbackDeduplicatesNamesAndKeepsHottestValue() {
+    func testNamedSensorsDeduplicateNamesAndKeepHottestValue() {
         let result = select([
-            ("PMU tdie1", 54),
-            ("PMU tdie1", 59),
-            ("PMU tdie2", 57),
+            ("SOC MTR Temp Sensor 0", 54),
+            ("SOC MTR Temp Sensor 0", 59),
+            ("SOC MTR Temp Sensor 1", 57),
             ("Battery Temp", 100)
         ])
         XCTAssertEqual(result.value, 59)
         XCTAssertEqual(result.count, 2)
+    }
+
+    func testPMUDieSensorsAreNotSubstituted() {
+        let result = select([("PMU tdie1", 59), ("PMU tdie2", 61)])
+        XCTAssertTrue(result.value.isNaN)
+        XCTAssertEqual(result.count, 0)
     }
 
     func testInvalidAndUnrelatedSensorsReturnUnavailable() {

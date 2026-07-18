@@ -29,7 +29,7 @@ The release performance gate is automated by `bash Scripts/performance-soak.sh`:
 
 ## Privacy and distribution
 
-MacMeter reads local operating-system counters only. It has no analytics, telemetry, update checker, or other outbound network request. Exact SoC temperature uses runtime-discovered `SOC MTR Temp` sensors, with Apple Silicon `PMU tdie` sensors as the fallback used by newer chips such as M4. This is a read-only, undocumented IOHID interface, so MacMeter is intended for direct Developer ID distribution rather than the Mac App Store.
+MacMeter reads local operating-system counters only. It has no analytics, telemetry, update checker, or other outbound network request. Exact SoC temperature uses runtime-discovered `SOC MTR Temp` sensors only; it shows unavailable rather than substituting a different sensor. This is a read-only, undocumented IOHID interface, so MacMeter is intended for direct Developer ID distribution rather than the Mac App Store.
 
 ## Version policy
 

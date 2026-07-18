@@ -18,19 +18,13 @@ final class ViewRenderingTests: XCTestCase {
             XCTAssertNotNil(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
         }
 
-        for metric in MetricID.allCases {
-            fixture.settings.cpuEnabled = metric == .cpu
-            fixture.settings.temperatureEnabled = metric == .temperature
-            fixture.settings.networkEnabled = metric == .network
-            fixture.settings.batteryEnabled = metric == .battery
+        for mask in 0..<16 {
+            fixture.settings.cpuEnabled = mask & 1 != 0
+            fixture.settings.temperatureEnabled = mask & 2 != 0
+            fixture.settings.networkEnabled = mask & 4 != 0
+            fixture.settings.batteryEnabled = mask & 8 != 0
             XCTAssertNotNil(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
         }
-
-        fixture.settings.cpuEnabled = false
-        fixture.settings.temperatureEnabled = false
-        fixture.settings.networkEnabled = false
-        fixture.settings.batteryEnabled = false
-        XCTAssertNotNil(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
     }
 
     func testPopoverAndSettingsRenderWithLiveFixtureValues() throws {

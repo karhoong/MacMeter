@@ -19,30 +19,25 @@ extern double IOHIDEventGetFloatValue(IOHIDEventRef event, int32_t field);
 static void MMRecordTemperature(
     NSString *product,
     double value,
-    NSMutableDictionary<NSString *, NSNumber *> *socSensors,
-    NSMutableDictionary<NSString *, NSNumber *> *pmuDieSensors
+    NSMutableDictionary<NSString *, NSNumber *> *socSensors
 ) {
     BOOL isNamedSoCSensor = [product hasPrefix:@"SOC MTR Temp"];
-    BOOL isPMUDieSensor = [product hasPrefix:@"PMU tdie"];
-    if ((!isNamedSoCSensor && !isPMUDieSensor) || !isfinite(value) || value < 0.0 || value > 110.0) { return; }
-    NSMutableDictionary<NSString *, NSNumber *> *destination = isNamedSoCSensor ? socSensors : pmuDieSensors;
-    NSNumber *existing = destination[product];
+    if (!isNamedSoCSensor || !isfinite(value) || value < 0.0 || value > 110.0) { return; }
+    NSNumber *existing = socSensors[product];
     if (existing == nil || value > existing.doubleValue) {
-        destination[product] = @(value);
+        socSensors[product] = @(value);
     }
 }
 
 static double MMSelectRecordedTemperature(
     NSDictionary<NSString *, NSNumber *> *socSensors,
-    NSDictionary<NSString *, NSNumber *> *pmuDieSensors,
     int32_t *sensorCount
 ) {
-    NSDictionary<NSString *, NSNumber *> *selected = socSensors.count > 0 ? socSensors : pmuDieSensors;
     double hottest = -INFINITY;
-    for (NSNumber *value in selected.allValues) {
+    for (NSNumber *value in socSensors.allValues) {
         hottest = fmax(hottest, value.doubleValue);
     }
-    int32_t count = (int32_t)selected.count;
+    int32_t count = (int32_t)socSensors.count;
     if (sensorCount != NULL) { *sensorCount = count; }
     return count > 0 ? hottest : NAN;
 }
@@ -51,13 +46,12 @@ double MMSelectSoCTemperature(const char **sensorNames, const double *values, in
     if (sensorCount != NULL) { *sensorCount = 0; }
     if (sensorNames == NULL || values == NULL || inputCount <= 0) { return NAN; }
     NSMutableDictionary<NSString *, NSNumber *> *socSensors = [NSMutableDictionary dictionary];
-    NSMutableDictionary<NSString *, NSNumber *> *pmuDieSensors = [NSMutableDictionary dictionary];
     for (int32_t index = 0; index < inputCount; index++) {
         if (sensorNames[index] == NULL) { continue; }
         NSString *product = [NSString stringWithUTF8String:sensorNames[index]];
-        if (product != nil) { MMRecordTemperature(product, values[index], socSensors, pmuDieSensors); }
+        if (product != nil) { MMRecordTemperature(product, values[index], socSensors); }
     }
-    return MMSelectRecordedTemperature(socSensors, pmuDieSensors, sensorCount);
+    return MMSelectRecordedTemperature(socSensors, sensorCount);
 }
 
 double MMHottestSoCTemperature(int32_t *sensorCount) {
@@ -74,24 +68,22 @@ double MMHottestSoCTemperature(int32_t *sensorCount) {
     }
 
     NSMutableDictionary<NSString *, NSNumber *> *socSensors = [NSMutableDictionary dictionary];
-    NSMutableDictionary<NSString *, NSNumber *> *pmuDieSensors = [NSMutableDictionary dictionary];
     CFIndex serviceCount = CFArrayGetCount(services);
     for (CFIndex index = 0; index < serviceCount; index++) {
         IOHIDServiceClientRef service = (IOHIDServiceClientRef)CFArrayGetValueAtIndex(services, index);
         CFTypeRef rawProduct = IOHIDServiceClientCopyProperty(service, CFSTR("Product"));
         NSString *product = CFBridgingRelease(rawProduct);
         BOOL isNamedSoCSensor = [product hasPrefix:@"SOC MTR Temp"];
-        BOOL isPMUDieSensor = [product hasPrefix:@"PMU tdie"];
-        if (!isNamedSoCSensor && !isPMUDieSensor) { continue; }
+        if (!isNamedSoCSensor) { continue; }
 
         IOHIDEventRef event = IOHIDServiceClientCopyEvent(service, MMIOHIDEventTypeTemperature, 0, 0);
         if (event == NULL) { continue; }
         double value = IOHIDEventGetFloatValue(event, MMIOHIDEventFieldBase(MMIOHIDEventTypeTemperature));
         CFRelease(event);
-        MMRecordTemperature(product, value, socSensors, pmuDieSensors);
+        MMRecordTemperature(product, value, socSensors);
     }
 
     CFRelease(services);
     CFRelease(client);
-    return MMSelectRecordedTemperature(socSensors, pmuDieSensors, sensorCount);
+    return MMSelectRecordedTemperature(socSensors, sensorCount);
 }

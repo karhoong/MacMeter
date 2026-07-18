@@ -7,11 +7,11 @@ Status: automated/local preview checks pass; production release evidence remains
 
 ## Passing
 
-- `bash Scripts/qa.sh`: 40 tests, 0 failures.
+- `bash Scripts/qa.sh`: 41 tests, 0 failures.
 - Production Swift line coverage: 1,121/1,232 (90.99%).
 - Metric calculation and conversion branches have deterministic boundary tests, including nonzero battery currents from ±1 mA through ±50 mA.
-- Live providers: CPU/topology, SoC temperature, physical-interface network rates, and battery power.
-- SoC classifier fixtures: preferred `SOC MTR Temp`, `PMU tdie` fallback, duplicate names, invalid values, unrelated sensors, and empty input.
+- Live providers: CPU/topology, physical-interface network rates, and battery power. The M4 Max exposes no valid `SOC MTR Temp`, so temperature correctly reports unavailable rather than substituting another sensor.
+- SoC classifier fixtures: hottest valid `SOC MTR Temp`, duplicate names, rejected `PMU tdie` substitution, invalid values, unrelated sensors, and empty input.
 - Coordinator: disabled-provider polling, fresh rate baselines, provider failure isolation, injected clock, exact interval restart, and cancellation.
 - Login item service: injected enable, disable, approval-required, not-found, and error paths.
 - Swift 6 Release Xcode build; arm64; bundle `com.karhoong.MacMeter`; `LSUIElement=true`; `0.1.0 (1)`.

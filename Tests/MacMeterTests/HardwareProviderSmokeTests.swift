@@ -30,9 +30,13 @@ final class HardwareProviderSmokeTests: XCTestCase {
     }
 
     func testSoCTemperatureProviderReturnsValidLiveReading() throws {
-        let reading = try XCTUnwrap(SoCTemperatureProvider().sample(at: Date()).value)
-        XCTAssertTrue((0...110).contains(reading.hottestCelsius))
-        XCTAssertGreaterThan(reading.sensorCount, 0)
+        let result = SoCTemperatureProvider().sample(at: Date())
+        if let reading = result.value {
+            XCTAssertTrue((0...110).contains(reading.hottestCelsius))
+            XCTAssertGreaterThan(reading.sensorCount, 0)
+        } else {
+            XCTAssertEqual(result.reason, "No supported SoC temperature sensor")
+        }
     }
 
     func testNetworkProviderProducesNonnegativeLiveRates() throws {
