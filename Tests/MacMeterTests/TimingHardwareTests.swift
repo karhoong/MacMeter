@@ -111,7 +111,7 @@ final class TimingHardwareTests: XCTestCase {
         evidence["commit"] = environment["MACMETER_QA_COMMIT"] ?? "unknown"
         evidence["startedAt"] = environment["MACMETER_QA_STARTED_AT"] ?? "unknown"
         evidence["dirtyWorktree"] = environment["MACMETER_QA_DIRTY"] == "true"
-        evidence["hardware"] = "Apple M4 Max"
+        evidence["hardware"] = environment["MACMETER_QA_HARDWARE"] ?? "unknown"
         evidence[section] = metrics
         guard let data = try? JSONSerialization.data(withJSONObject: evidence, options: [.prettyPrinted, .sortedKeys]) else {
             XCTFail("Could not encode timing evidence")
