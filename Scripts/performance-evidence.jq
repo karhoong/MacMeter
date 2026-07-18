@@ -6,9 +6,12 @@ and .commit == $commit
 and .hardware == $hardware
 and .binarySHA256 == $binarySHA256
 and .metricsSourceSHA256 == $metricsSourceSHA256
+and .metricsBinarySHA256 == $metricsBinarySHA256
+and .metricsCompiler == $metricsCompiler
+and .sleepPreventionMethod == "caffeinate -dimsu -w harness PID with per-sample liveness checks"
 and .dirtyWorktree == false
-and (.version | type == "string" and length > 0)
-and (.build | type == "string" and length > 0)
+and .version == $version
+and .build == $build
 and (.startedAt | type == "string" and length > 0)
 and (.finishedAt | type == "string" and length > 0)
 and .warmupSeconds == 1800
@@ -32,6 +35,8 @@ and (.results.averageCPUPercent | nonnegative_number)
 and (.results.p95CPUPercent | nonnegative_number)
 and (.results.measurementDurationSeconds | nonnegative_number)
 and .results.measurementDurationSeconds >= 86400
+and .results.maximumRSSKiB >= .results.baselineRSSKiB
+and .results.growthKiB == (.results.maximumRSSKiB - .results.baselineRSSKiB)
 and .results.maximumRSSKiB <= .thresholds.rssLimitKiB
 and .results.growthKiB <= .thresholds.growthLimitKiB
 and .results.averageCPUPercent <= .thresholds.averageCPUPercentLimit

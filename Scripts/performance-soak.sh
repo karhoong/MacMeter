@@ -33,16 +33,13 @@ if [[ ! -x "$executable" ]]; then
   exit 1
 fi
 
-metrics_binary="$(mktemp /tmp/macmeter-process-metrics.XXXXXX)"
-rm -f "$metrics_binary"
+metrics_directory="$(mktemp -d /tmp/macmeter-process-metrics.XXXXXX)"
+metrics_binary="$metrics_directory/process-metrics"
 xcrun clang -O2 -Wall -Wextra -Werror \
   "$project_root/Scripts/process-metrics.c" -o "$metrics_binary"
 metrics_source_sha256="$(shasum -a 256 "$project_root/Scripts/process-metrics.c" | awk '{print $1}')"
-
-caffeinate -dimsu -w "$$" >/dev/null 2>&1 &
-caffeinate_pid=$!
-"$executable" >/dev/null 2>&1 &
-pid=$!
+metrics_binary_sha256="$(shasum -a 256 "$metrics_binary" | awk '{print $1}')"
+metrics_compiler="$(xcrun clang --version | head -1)"
 cpu_values_file="$(mktemp /tmp/macmeter-cpu-values.XXXXXX)"
 started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 commit="$(git -C "$project_root" rev-parse HEAD)"
@@ -52,6 +49,8 @@ if [[ -n "$(git -C "$project_root" status --porcelain)" ]]; then dirty=true; fi
 binary_sha256="$(shasum -a 256 "$executable" | awk '{print $1}')"
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
 build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")"
+pid=""
+caffeinate_pid=""
 finalized=false
 failure_reason="unexpected error"
 baseline_rss=""
@@ -76,6 +75,9 @@ write_base_evidence() {
     --arg hardware "$hardware" \
     --arg binarySHA256 "$binary_sha256" \
     --arg metricsSourceSHA256 "$metrics_source_sha256" \
+    --arg metricsBinarySHA256 "$metrics_binary_sha256" \
+    --arg metricsCompiler "$metrics_compiler" \
+    --arg sleepPreventionMethod "caffeinate -dimsu -w harness PID with per-sample liveness checks" \
     --arg version "$version" \
     --arg build "$build" \
     --arg cpuMeasurementMethod "proc_pid_rusage cumulative user+system CPU nanoseconds divided by CLOCK_MONOTONIC wall-time deltas" \
@@ -91,6 +93,8 @@ write_base_evidence() {
     --argjson p95CPUPercentLimit "$cpu_p95_limit" \
     '{status:$status, commit:$commit, startedAt:$startedAt, hardware:$hardware,
       binarySHA256:$binarySHA256, metricsSourceSHA256:$metricsSourceSHA256,
+      metricsBinarySHA256:$metricsBinarySHA256, metricsCompiler:$metricsCompiler,
+      sleepPreventionMethod:$sleepPreventionMethod,
       version:$version, build:$build, dirtyWorktree:$dirtyWorktree, pid:$pid,
       warmupSeconds:$warmupSeconds, soakSeconds:$soakSeconds,
       sampleSeconds:$sampleSeconds, sampleCadenceSeconds:$sampleCadenceSeconds,
@@ -164,21 +168,32 @@ fail() {
 
 cleanup() {
   local exit_code=$?
-  if kill -0 "$pid" 2>/dev/null; then
+  if [[ -n "${pid:-}" ]] && kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   fi
-  if [[ "$finalized" != true ]]; then write_failed_evidence "$exit_code" || true; fi
-  kill "$caffeinate_pid" 2>/dev/null || true
-  wait "$caffeinate_pid" 2>/dev/null || true
+  if [[ -n "${pid:-}" && "$finalized" != true ]]; then write_failed_evidence "$exit_code" || true; fi
+  if [[ -n "${caffeinate_pid:-}" ]]; then
+    kill "$caffeinate_pid" 2>/dev/null || true
+    wait "$caffeinate_pid" 2>/dev/null || true
+  fi
   rm -f "$cpu_values_file" "$metrics_binary"
+  rmdir "$metrics_directory" 2>/dev/null || true
   return "$exit_code"
 }
 trap cleanup EXIT
 trap 'failure_reason="interrupted"; exit 130' INT TERM
 
+caffeinate -dimsu -w "$$" >/dev/null 2>&1 &
+caffeinate_pid=$!
+"$executable" >/dev/null 2>&1 &
+pid=$!
+
 take_sample() {
   local metrics
+  if ! kill -0 "$caffeinate_pid" 2>/dev/null; then
+    fail "Sleep-prevention process exited during the performance soak"
+  fi
   if ! metrics="$("$metrics_binary" "$pid" 2>/dev/null)"; then
     fail "MacMeter exited or process metrics became unavailable during the performance soak"
   fi

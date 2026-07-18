@@ -19,3 +19,8 @@ nearest_rank_percentile() {
   index=$(((percentile * count + 99) / 100))
   sort -n "$values_file" | sed -n "${index}p"
 }
+
+require_clean_worktree() {
+  local repository="$1"
+  [[ -z "$(git -C "$repository" status --porcelain)" ]]
+}
