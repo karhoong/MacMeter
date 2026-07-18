@@ -31,6 +31,14 @@ binary_sha256="$(shasum -a 256 "$executable" | awk '{print $1}')"
 version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")"
 build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")"
 finalized=false
+failure_reason="unexpected error"
+baseline_rss=""
+maximum_rss=0
+cpu_sum=0
+sample_count=0
+average_cpu=""
+cpu_p95=""
+growth=""
 
 write_base_evidence() {
   local status="$1"
@@ -72,20 +80,63 @@ write_completed_evidence() {
   mv "$evidence.tmp" "$evidence"
 }
 
+compute_results() {
+  if (( sample_count == 0 )); then return 1; fi
+  average_cpu="$(awk -v sum="$cpu_sum" -v count="$sample_count" 'BEGIN { printf "%.3f", sum / count }')"
+  local p95_index
+  p95_index=$(((95 * sample_count + 99) / 100))
+  cpu_p95="$(sort -n "$cpu_values_file" | sed -n "${p95_index}p")"
+  growth=$((maximum_rss - baseline_rss))
+}
+
+write_failed_evidence() {
+  local exit_code="$1"
+  local finished_at
+  finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  write_base_evidence "failed"
+  jq \
+    --arg finishedAt "$finished_at" \
+    --arg failureReason "$failure_reason" \
+    --argjson exitCode "$exit_code" \
+    '. + {finishedAt:$finishedAt, failureReason:$failureReason, exitCode:$exitCode}' \
+    "$evidence" >"$evidence.tmp"
+  mv "$evidence.tmp" "$evidence"
+  if compute_results; then
+    jq \
+      --argjson samples "$sample_count" \
+      --argjson baselineRSSKiB "$baseline_rss" \
+      --argjson maximumRSSKiB "$maximum_rss" \
+      --argjson growthKiB "$growth" \
+      --argjson averageCPUPercent "$average_cpu" \
+      --argjson p95CPUPercent "$cpu_p95" \
+      '. + {partialResults:{samples:$samples, baselineRSSKiB:$baselineRSSKiB,
+        maximumRSSKiB:$maximumRSSKiB, growthKiB:$growthKiB,
+        averageCPUPercent:$averageCPUPercent, p95CPUPercent:$p95CPUPercent}}' \
+      "$evidence" >"$evidence.tmp"
+    mv "$evidence.tmp" "$evidence"
+  fi
+}
+
+fail() {
+  failure_reason="$1"
+  echo "$failure_reason" >&2
+  exit 1
+}
+
 cleanup() {
   local exit_code=$?
   if kill -0 "$pid" 2>/dev/null; then
     kill "$pid" 2>/dev/null || true
     wait "$pid" 2>/dev/null || true
   fi
-  rm -f "$cpu_values_file"
   if [[ "$finalized" != true ]]; then
-    write_base_evidence "failed-or-interrupted" || true
+    write_failed_evidence "$exit_code" || true
   fi
+  rm -f "$cpu_values_file"
   return "$exit_code"
 }
 trap cleanup EXIT
-trap 'exit 130' INT TERM
+trap 'failure_reason="interrupted"; exit 130' INT TERM
 
 mkdir -p "$(dirname "$output")"
 mkdir -p "$(dirname "$evidence")"
@@ -94,17 +145,11 @@ write_base_evidence "running"
 
 measurement_start=$((started + warmup_seconds))
 finish=$((measurement_start + soak_seconds))
-baseline_rss=""
-maximum_rss=0
-cpu_sum=0
-sample_count=0
-
 while true; do
   now="$(date +%s)"
   if (( now >= finish )); then break; fi
   if ! kill -0 "$pid" 2>/dev/null; then
-    echo "MacMeter exited during the performance soak" >&2
-    exit 1
+    fail "MacMeter exited during the performance soak"
   fi
 
   rss="$(ps -o rss= -p "$pid" | awk '{print $1}')"
@@ -123,31 +168,23 @@ while true; do
 done
 
 if (( sample_count == 0 )); then
-  echo "No post-warm-up samples were collected" >&2
-  exit 1
+  fail "No post-warm-up samples were collected"
 fi
 
-average_cpu="$(awk -v sum="$cpu_sum" -v count="$sample_count" 'BEGIN { printf "%.3f", sum / count }')"
-p95_index=$(((95 * sample_count + 99) / 100))
-cpu_p95="$(sort -n "$cpu_values_file" | sed -n "${p95_index}p")"
-growth=$((maximum_rss - baseline_rss))
+compute_results
 echo "Performance soak: baseline=${baseline_rss}KiB max=${maximum_rss}KiB growth=${growth}KiB averageCPU=${average_cpu}% p95CPU=${cpu_p95}%"
 
 if (( maximum_rss > rss_limit_kib )); then
-  echo "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up" >&2
-  exit 1
+  fail "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"
 fi
 if (( growth > growth_limit_kib )); then
-  echo "RSS growth failed: ${growth}KiB > ${growth_limit_kib}KiB" >&2
-  exit 1
+  fail "RSS growth failed: ${growth}KiB > ${growth_limit_kib}KiB"
 fi
 if ! awk -v cpu="$average_cpu" 'BEGIN { exit !(cpu <= 1.0) }'; then
-  echo "Idle CPU limit failed: ${average_cpu}% > 1.0%" >&2
-  exit 1
+  fail "Idle CPU limit failed: ${average_cpu}% > 1.0%"
 fi
 if ! awk -v cpu="$cpu_p95" -v limit="$cpu_p95_limit" 'BEGIN { exit !(cpu <= limit) }'; then
-  echo "Idle CPU p95 failed: ${cpu_p95}% > ${cpu_p95_limit}%" >&2
-  exit 1
+  fail "Idle CPU p95 failed: ${cpu_p95}% > ${cpu_p95_limit}%"
 fi
 
 write_completed_evidence
