@@ -18,6 +18,7 @@
 		A1000000000000000000000E /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* StatusItemController.swift */; };
 		A1000000000000000000000F /* NativeSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* NativeSettingsViewController.swift */; };
 		A10000000000000000000010 /* NativePopoverViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* NativePopoverViewController.swift */; };
+		A10000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
 		A2000000000000000000000E /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
 		A2000000000000000000000F /* NativeSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* NativePopoverViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePopoverViewController.swift; sourceTree = "<group>"; };
+		A20000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -101,7 +103,10 @@
 		};
 		A40000000000000000000006 /* Resources */ = {
 			isa = PBXGroup;
-			children = (A2000000000000000000000C,);
+			children = (
+				A2000000000000000000000C,
+				A20000000000000000000011,
+			);
 			path = Resources;
 			sourceTree = "<group>";
 		};
@@ -157,7 +162,9 @@
 		A60000000000000000000002 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = ();
+			files = (
+				A10000000000000000000011,
+			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -210,13 +217,14 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
 				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -229,6 +237,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_OBJC_ARC = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
@@ -237,7 +246,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.0.1;
 				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
 				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
 				PRODUCT_NAME = "$(TARGET_NAME)";

@@ -11,8 +11,17 @@ if macmeter_validate_release_version "1.0.0" "" 2>/dev/null; then
   exit 1
 fi
 macmeter_validate_release_version "1.0.0" "pass"
-if macmeter_validate_release_version "1.0.1" "pass" 2>/dev/null; then
-  echo "Unapproved post-1.0 version unexpectedly passed" >&2
+if macmeter_validate_release_version "1.0.1" "" 2>/dev/null; then
+  echo "Unapproved 1.0.1 unexpectedly passed" >&2
+  exit 1
+fi
+macmeter_validate_release_version "1.0.1" "pass"
+if macmeter_validate_release_version "1.1.0" "pass" 2>/dev/null; then
+  echo "Unapproved minor version unexpectedly passed" >&2
+  exit 1
+fi
+if macmeter_validate_release_version "1.0.beta" "pass" 2>/dev/null; then
+  echo "Malformed patch version unexpectedly passed" >&2
   exit 1
 fi
 

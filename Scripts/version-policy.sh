@@ -16,18 +16,16 @@ macmeter_validate_release_version() {
   local version="$1"
   local owner_approval="${2:-}"
 
-  case "$version" in
-    0.*) return 0 ;;
-    1.0.0)
-      if [[ "$owner_approval" == "pass" ]]; then
-        return 0
-      fi
-      echo "1.0.0 requires the owner approval value: pass" >&2
-      return 1
-      ;;
-    *)
-      echo "Unsupported release version under the owner-controlled policy: $version" >&2
-      return 1
-      ;;
-  esac
+  if [[ "$version" =~ ^0\.[0-9]+\.[0-9]+$ ]]; then
+    return 0
+  fi
+  if [[ "$version" =~ ^1\.0\.[0-9]+$ ]]; then
+    if [[ "$owner_approval" == "pass" ]]; then
+      return 0
+    fi
+    echo "$version requires the owner approval value: pass" >&2
+    return 1
+  fi
+  echo "Unsupported release version under the owner-controlled policy: $version" >&2
+  return 1
 }

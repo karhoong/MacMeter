@@ -75,6 +75,8 @@ test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Con
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$expected_build"
 test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = "com.karhoong.MacMeter"
 test "$(/usr/libexec/PlistBuddy -c 'Print :LSUIElement' "$app/Contents/Info.plist")" = "true"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$app/Contents/Info.plist")" = "AppIcon"
+test -f "$app/Contents/Resources/AppIcon.icns"
 file "$app/Contents/MacOS/MacMeter" | grep -q "arm64"
 if otool -L "$app/Contents/MacOS/MacMeter" | rg 'CFNetwork|Network\.framework|WebKit'; then
   echo "Unexpected outbound-capable framework linked" >&2

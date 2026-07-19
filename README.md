@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Assets/Brand/MacMeter-logo.png" width="180" alt="MacMeter logo">
+</p>
+
 # MacMeter
 
 MacMeter is a native macOS menu-bar monitor for Apple Silicon. It keeps CPU usage, SoC temperature, network throughput, and battery power visible without opening Activity Monitor or occupying the Dock.
@@ -117,7 +121,7 @@ You can also open `MacMeter.xcodeproj` in Xcode and run the `MacMeter` scheme on
 
 ## Tests and QA
 
-Run the complete automated suite for the approved 1.0.0 release:
+Run the complete automated suite for the owner-approved 1.0.x release line:
 
 ```sh
 MACMETER_OWNER_APPROVAL=pass bash Scripts/qa.sh
@@ -162,7 +166,7 @@ The script builds, signs with the hardened runtime, verifies the signature, crea
 
 ## Version
 
-The first owner-approved stable release is **1.0.0**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
+The first owner-approved stable release was **1.0.0**. The current logo update is **1.0.1**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
 
 ## License
 
