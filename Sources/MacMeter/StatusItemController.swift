@@ -104,22 +104,20 @@ enum StatusItemLabelBuilder {
     }
 }
 
-private final class StatusItemTextField: NSTextField {
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override var allowsVibrancy: Bool { false }
-}
-
 @MainActor
 final class StatusItemController: NSObject {
     private let coordinator: MetricsCoordinator
     private let settings: SettingsStore
     private let settingsWindowController: SettingsWindowController
     private let statusItem: NSStatusItem
-    private let label = StatusItemTextField(frame: .zero)
     private let popover = NSPopover()
     private var cancellables = Set<AnyCancellable>()
     private var cycleTask: Task<Void, Never>?
     private var cycleIndex = 0
+
+    var renderedTitle: NSAttributedString { statusItem.button?.attributedTitle ?? NSAttributedString() }
+    var statusButtonSubviewCount: Int { statusItem.button?.subviews.count ?? 0 }
+    var renderedLength: CGFloat { statusItem.length }
 
     init(
         coordinator: MetricsCoordinator,
@@ -136,14 +134,6 @@ final class StatusItemController: NSObject {
         popover.behavior = .transient
         popover.animates = true
         popover.contentSize = NSSize(width: 390, height: 520)
-        popover.contentViewController = NSHostingController(rootView: MeterPopoverView(
-            coordinator: coordinator,
-            settings: settings,
-            openSettings: { [weak self] in
-                self?.popover.performClose(nil)
-                self?.settingsWindowController.show()
-            }
-        ))
 
         coordinator.objectWillChange.sink { [weak self] in
             Task { @MainActor in
@@ -161,6 +151,13 @@ final class StatusItemController: NSObject {
         settingsChanged()
     }
 
+    func close() {
+        cycleTask?.cancel()
+        cycleTask = nil
+        popover.performClose(nil)
+        NSStatusBar.system.removeStatusItem(statusItem)
+    }
+
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
         button.title = ""
@@ -168,20 +165,7 @@ final class StatusItemController: NSObject {
         button.target = self
         button.action = #selector(togglePopover)
         button.sendAction(on: [.leftMouseUp])
-
-        label.isBezeled = false
-        label.isBordered = false
-        label.isEditable = false
-        label.isSelectable = false
-        label.drawsBackground = false
-        label.maximumNumberOfLines = 1
-        label.lineBreakMode = .byClipping
-        label.translatesAutoresizingMaskIntoConstraints = false
-        button.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 4),
-            label.centerYAnchor.constraint(equalTo: button.centerYAnchor)
-        ])
+        button.cell?.lineBreakMode = .byClipping
     }
 
     private func settingsChanged() {
@@ -212,14 +196,15 @@ final class StatusItemController: NSObject {
     }
 
     private func refresh() {
-        label.attributedStringValue = StatusItemLabelBuilder.make(
+        guard let button = statusItem.button else { return }
+        let attributedTitle = StatusItemLabelBuilder.make(
             coordinator: coordinator,
             settings: settings,
             cycleIndex: cycleIndex
         )
-        label.sizeToFit()
-        statusItem.length = max(18, ceil(label.fittingSize.width) + 8)
-        statusItem.button?.setAccessibilityLabel(StatusItemLabelBuilder.accessibilityLabel(
+        button.attributedTitle = attributedTitle
+        statusItem.length = max(18, ceil(attributedTitle.size().width) + 8)
+        button.setAccessibilityLabel(StatusItemLabelBuilder.accessibilityLabel(
             coordinator: coordinator,
             settings: settings,
             cycleIndex: cycleIndex
@@ -231,8 +216,21 @@ final class StatusItemController: NSObject {
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            preparePopoverIfNeeded()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             NSApp.activate(ignoringOtherApps: true)
         }
+    }
+
+    private func preparePopoverIfNeeded() {
+        guard popover.contentViewController == nil else { return }
+        popover.contentViewController = NSHostingController(rootView: MeterPopoverView(
+            coordinator: coordinator,
+            settings: settings,
+            openSettings: { [weak self] in
+                self?.popover.performClose(nil)
+                self?.settingsWindowController.show()
+            }
+        ))
     }
 }

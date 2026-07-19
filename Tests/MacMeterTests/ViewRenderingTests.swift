@@ -5,8 +5,12 @@ import XCTest
 @MainActor
 final class ViewRenderingTests: XCTestCase {
     func testAppCompositionCanBeConstructed() {
-        let app = MacMeterApp()
-        _ = app.body
+        let delegate = MacMeterApplicationDelegate()
+        XCTAssertFalse(delegate.isRunning)
+        delegate.start()
+        XCTAssertTrue(delegate.isRunning)
+        delegate.stop()
+        XCTAssertFalse(delegate.isRunning)
     }
 
     func testVersionLabelIncludesVersionAndBuild() {
@@ -314,6 +318,26 @@ final class ViewRenderingTests: XCTestCase {
             )
             XCTAssertEqual(label.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, expectedColor)
         }
+    }
+
+    func testNativeStatusControllerUsesAttributedButtonTitleWithoutCustomSubviews() {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        setMetricMask(15, settings: fixture.settings)
+        let settingsWindowController = SettingsWindowController(
+            settings: fixture.settings,
+            loginItem: LoginItemManager()
+        )
+        let controller = StatusItemController(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            settingsWindowController: settingsWindowController
+        )
+        defer { controller.close() }
+
+        XCTAssertEqual(controller.renderedTitle.string, "↑0.4↓3.2MB/s | 50% | 55°C | D 8.4W")
+        XCTAssertEqual(controller.statusButtonSubviewCount, 0, "Custom status-button subviews trigger continuous AppKit replicant snapshots")
+        XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(controller.renderedTitle.size().width) + 8)
     }
 
     private func render<V: View>(_ view: V) -> NSImage? {

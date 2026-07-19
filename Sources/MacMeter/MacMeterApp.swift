@@ -50,27 +50,58 @@ final class SettingsWindowController {
     }
 }
 
-@main
-struct MacMeterApp: App {
-    private let statusItemController: StatusItemController
+@MainActor
+final class MacMeterApplicationDelegate: NSObject, NSApplicationDelegate {
+    private var coordinator: MetricsCoordinator?
+    private var settingsWindowController: SettingsWindowController?
+    private var statusItemController: StatusItemController?
 
-    @MainActor
-    init() {
+    var isRunning: Bool { statusItemController != nil }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        stop()
+    }
+
+    func start() {
+        guard statusItemController == nil else { return }
         let settings = SettingsStore()
         let loginItem = LoginItemManager()
         NSApplication.shared.setActivationPolicy(.accessory)
         let coordinator = MetricsCoordinator(settings: settings)
         let settingsWindowController = SettingsWindowController(settings: settings, loginItem: loginItem)
-        statusItemController = StatusItemController(
+        let statusItemController = StatusItemController(
             coordinator: coordinator,
             settings: settings,
             settingsWindowController: settingsWindowController
         )
+        self.coordinator = coordinator
+        self.settingsWindowController = settingsWindowController
+        self.statusItemController = statusItemController
     }
 
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
+    func stop() {
+        statusItemController?.close()
+        statusItemController = nil
+        coordinator?.stopSampling()
+        coordinator = nil
+        settingsWindowController?.close()
+        settingsWindowController = nil
+    }
+}
+
+@main
+enum MacMeterMain {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = MacMeterApplicationDelegate()
+        application.delegate = delegate
+        application.setActivationPolicy(.accessory)
+        application.run()
+        withExtendedLifetime(delegate) {}
     }
 }

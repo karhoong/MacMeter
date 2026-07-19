@@ -12,6 +12,7 @@ let package = Package(
             name: "MacMeterSensors",
             path: "Sources/MacMeterSensors",
             publicHeadersPath: "include",
+            cSettings: [.unsafeFlags(["-fobjc-arc"])],
             linkerSettings: [.linkedFramework("IOKit")]
         ),
         .executableTarget(

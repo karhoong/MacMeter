@@ -1,11 +1,13 @@
 .build/
 build/
 DerivedData/
+.derived-data/
 *.xcuserstate
 xcuserdata/
 .DS_Store
 *.dmg
 *.xcresult
+*.profraw
 QA/performance-soak.csv
 QA/latest-timing.json
 QA/latest-performance.json

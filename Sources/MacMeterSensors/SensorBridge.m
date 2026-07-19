@@ -253,7 +253,7 @@ static double MMHottestSMCSoCTemperature(int32_t *sensorCount) {
         if (connection == IO_OBJECT_NULL) {
             connection = MMSMCOpen();
             if (connection == IO_OBJECT_NULL) { return NAN; }
-            keys = MMSMCDiscoverSoCKeys(connection);
+            keys = [MMSMCDiscoverSoCKeys(connection) copy];
             if (keys.count == 0) {
                 IOServiceClose(connection);
                 connection = IO_OBJECT_NULL;
