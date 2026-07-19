@@ -31,7 +31,7 @@ The release performance gate is automated by `bash Scripts/performance-soak.sh`:
 
 ## Privacy and distribution
 
-MacMeter reads local operating-system counters only. It has no analytics, telemetry, update checker, or other outbound network request. Exact SoC temperature uses runtime-discovered `SOC MTR Temp` sensors only; it shows unavailable rather than substituting a different sensor. This is a read-only, undocumented IOHID interface, so MacMeter is intended for direct Developer ID distribution rather than the Mac App Store.
+MacMeter reads local operating-system counters only. It has no analytics, telemetry, update checker, or other outbound network request. SoC temperature first uses runtime-discovered `SOC MTR Temp` sensors. On macOS versions that no longer expose those HID services, it falls back to read-only AppleSMC enumeration restricted to CPU/GPU die keys (`Tp`, `Te`, `Tg`, and `TCMz`), choosing the hottest fresh valid value. It never substitutes battery, SSD, or chassis temperature. These are undocumented hardware interfaces, so MacMeter is intended for direct Developer ID distribution rather than the Mac App Store.
 
 ## Version policy
 

@@ -66,6 +66,35 @@ final class ViewRenderingTests: XCTestCase {
         }
     }
 
+    func testPersistentDefaultLabelExpandsFromCPUOnlyToAllEnabledMetrics() {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        fixture.settings.displayMode = .default
+        setMetricMask(1, settings: fixture.settings)
+
+        let hostingController = NSHostingController(rootView: MenuBarLabelView(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings
+        ))
+        let host = hostingController.view
+        host.frame = NSRect(x: 0, y: 0, width: 120, height: 24)
+        host.layoutSubtreeIfNeeded()
+        let cpuOnlyWidth = hostingController.sizeThatFits(in: CGSize(width: 1_000, height: 24)).width
+        host.frame.size.width = cpuOnlyWidth
+
+        setMetricMask(15, settings: fixture.settings)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        host.needsLayout = true
+        host.layoutSubtreeIfNeeded()
+        let allMetricsWidth = hostingController.sizeThatFits(in: CGSize(width: cpuOnlyWidth, height: 24)).width
+
+        XCTAssertGreaterThan(
+            allMetricsWidth,
+            cpuOnlyWidth + 100,
+            "The persistent Default label did not expand for SoC, network, and battery after starting CPU-only"
+        )
+    }
+
     func testMenuBarAppearanceTextSizeAndConstrainedCycleMatrixRenders() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }

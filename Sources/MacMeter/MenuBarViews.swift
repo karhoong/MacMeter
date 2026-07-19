@@ -97,7 +97,7 @@ struct MenuBarLabelView: View {
                 metricView(settings.enabledMetrics[cycleController.index % settings.enabledMetrics.count], compact: true)
                     .frame(minWidth: 72)
             } else {
-                HStack(spacing: settings.displayMode == .compact ? 3 : 5) {
+                HStack(spacing: settings.displayMode == .compact ? 2 : 3) {
                     ForEach(Array(settings.enabledMetrics.enumerated()), id: \.element.id) { index, metric in
                         if index > 0 && settings.displayMode == .default {
                             Text("|").foregroundStyle(.secondary).accessibilityHidden(true)
@@ -105,9 +105,14 @@ struct MenuBarLabelView: View {
                         metricView(metric, compact: settings.displayMode == .compact)
                     }
                 }
+                // MenuBarExtra can otherwise keep the width from its first metric
+                // update and compress later readings out of sight. The label must
+                // advertise its complete intrinsic width so Default always shows
+                // every enabled metric.
+                .fixedSize(horizontal: true, vertical: false)
             }
         }
-        .font((settings.displayMode == .compact ? Font.caption2 : Font.caption).monospaced().weight(.medium))
+        .font(menuBarFont)
         .lineLimit(1)
         .onAppear {
             updateCycleActivity()
@@ -121,6 +126,11 @@ struct MenuBarLabelView: View {
             cycleController.reset()
             updateCycleActivity()
         }
+    }
+
+    private var menuBarFont: Font {
+        let size: CGFloat = settings.displayMode == .compact ? 8.5 : 9.5
+        return .system(size: size, weight: .medium, design: .monospaced)
     }
 
     @ViewBuilder

@@ -7,18 +7,18 @@ Status: automated/local preview checks pass; production release evidence remains
 
 ## Passing
 
-- `bash Scripts/qa.sh`: 61 XCTest cases, 0 failures, plus version, timing-evidence, raw-performance-evidence, and runtime-privacy mutation suites.
-- Production Swift line coverage: 1,391/1,476 (94.24%).
+- `bash Scripts/qa.sh`: 64 XCTest cases, 0 failures, plus version, timing-evidence, raw-performance-evidence, and runtime-privacy mutation suites.
+- Production Swift line coverage: 1,440/1,518 (94.86%).
 - All 29 declared metric calculation/conversion decision paths are exercised by an executable set-equality contract, including CPU counter reset/zero/kind paths, every network rejection and unit, all battery directions, temperature bounds, and formatting paths. Battery precision fixtures include nonzero currents from ±1 mA through ±50 mA.
-- Live providers: CPU/topology, physical-interface network rates, and battery power. The M4 Max exposes no valid `SOC MTR Temp`, so temperature correctly reports unavailable rather than substituting another sensor.
-- SoC classifier fixtures: hottest valid `SOC MTR Temp`, duplicate names, rejected `PMU tdie` substitution, invalid values, unrelated sensors, and empty input.
+- Live providers: CPU/topology, physical-interface network rates, battery power, and SoC temperature. The M4 Max live test now requires a valid temperature through the read-only AppleSMC fallback and a cached refresh below 250 ms.
+- SoC classifier fixtures: hottest valid exact `SOC MTR Temp`; hottest valid AppleSMC CPU/GPU die key (`Tp`/`Te`/`Tg`/`TCMz`); duplicate names; rejected `PMU tdie`, battery, SSD, and chassis substitution; invalid values; unrelated sensors; and empty input.
 - Deterministic raw-provider fixtures cover active `en*` selection while excluding down, non-running, loopback, bridge, and tunnel devices; network source failure; missing battery/property telemetry; every inconsistent battery direction/state; and charge/drain/idle values.
 - Coordinator: disabled-provider polling, fresh rate baselines, immediate enable-sample timestamps, unavailable enable isolation, provider failure isolation, injected clock, exact interval restart, and cancellation.
 - Login item service: injected enable, disable, approval-required, not-found, and error paths.
 - Swift 6 Release Xcode build; arm64; bundle `com.karhoong.MacMeter`; `LSUIElement=true`; `0.1.0 (1)`.
 - Static outbound-network source and linked-framework gates. Every QA Release candidate also undergoes a 10-second, one-second-cadence `lsof` observation of its exact child PID with all four providers forced on at the default two-second refresh; commit/dirty state, binary SHA-256, version/build, hardware, timestamps, configuration, method, observer provenance, liveness, and zero outbound/listening sockets are recorded in ignored `QA/latest-runtime-privacy.json` and revalidated fail-closed.
 - Live M4 timing gates enforce refresh p95 error ≤200 ms, AppKit-host paint p95 <250 ms with a non-nil cached bitmap, and five-second cycle p95 error ≤200 ms. Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
-- Render matrix: Compact/Default/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text. Every Cycle page fits a 136-point intrinsic-width budget; all-metric Compact and Default labels fit 300- and 480-point budgets respectively at small, large, and accessibility text sizes, without forced clipping in the test.
+- Render matrix: Compact/Default/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text. Every Cycle page fits a 136-point intrinsic-width budget; all-metric Compact and Default labels fit 300- and 480-point budgets respectively at small, large, and accessibility text sizes. A dedicated regression keeps one hosted Default label alive, starts it CPU-only and narrow, then enables all four metrics and proves that same host expands by more than 100 points after live layout.
 
 ## Performance evidence
 

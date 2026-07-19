@@ -30,13 +30,20 @@ final class HardwareProviderSmokeTests: XCTestCase {
     }
 
     func testSoCTemperatureProviderReturnsValidLiveReading() throws {
-        let result = SoCTemperatureProvider().sample(at: Date())
-        if let reading = result.value {
-            XCTAssertTrue((0...110).contains(reading.hottestCelsius))
-            XCTAssertGreaterThan(reading.sensorCount, 0)
-        } else {
-            XCTAssertEqual(result.reason, "No supported SoC temperature sensor")
-        }
+        let provider = SoCTemperatureProvider()
+        let result = provider.sample(at: Date())
+        let reading = try XCTUnwrap(
+            result.value,
+            "SoC temperature unavailable on Apple Silicon QA Mac: \(result.reason ?? "unknown")"
+        )
+        XCTAssertTrue((0...110).contains(reading.hottestCelsius))
+        XCTAssertGreaterThan(reading.sensorCount, 0)
+
+        let start = ContinuousClock.now
+        let refreshed = try XCTUnwrap(provider.sample(at: Date()).value)
+        let elapsed = start.duration(to: .now)
+        XCTAssertTrue((0...110).contains(refreshed.hottestCelsius))
+        XCTAssertLessThan(elapsed, .milliseconds(250), "Cached SoC refresh took \(elapsed)")
     }
 
     func testNetworkProviderProducesNonnegativeLiveRates() throws {
