@@ -1,10 +1,9 @@
 import AppKit
 import Combine
-import SwiftUI
 
 enum StatusItemLabelBuilder {
-    static let fontSize: CGFloat = 6.5
-    static let lineHeight: CGFloat = 7.5
+    static let fontSize: CGFloat = 9
+    static let lineHeight: CGFloat = 10.5
 
     @MainActor
     static func make(
@@ -86,7 +85,7 @@ enum StatusItemLabelBuilder {
             guard let reading = coordinator.network.value else {
                 return attributed("↑—↓—\(settings.networkUnit.menuLabel)", color: .secondaryLabelColor)
             }
-            return attributed(MenuBarPresentation.network(reading, unit: settings.networkUnit), color: .labelColor)
+            return networkAttributed(reading, unit: settings.networkUnit)
         case .battery:
             guard let reading = coordinator.battery.value else { return attributed("—", color: .secondaryLabelColor) }
             let color: NSColor
@@ -99,6 +98,23 @@ enum StatusItemLabelBuilder {
         }
     }
 
+    private static func networkAttributed(_ reading: NetworkReading, unit: NetworkUnit) -> NSAttributedString {
+        let outgoing = MetricFormatting.network(
+            bytesPerSecond: reading.outboundBytesPerSecond,
+            unit: unit,
+            fixedOneDecimal: true
+        )
+        let incoming = MetricFormatting.network(
+            bytesPerSecond: reading.inboundBytesPerSecond,
+            unit: unit,
+            fixedOneDecimal: true
+        )
+        let result = NSMutableAttributedString()
+        result.append(attributed("↑\(outgoing)", color: .systemRed))
+        result.append(attributed("↓\(incoming)\(unit.menuLabel)", color: .systemGreen))
+        return result
+    }
+
     private static func attributed(_ text: String, color: NSColor) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
@@ -107,7 +123,7 @@ enum StatusItemLabelBuilder {
         return NSAttributedString(
             string: text,
             attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
+                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold),
                 .foregroundColor: color,
                 .paragraphStyle: paragraph
             ]
@@ -127,8 +143,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var cancellables = Set<AnyCancellable>()
     private var cycleTask: Task<Void, Never>?
     private var cycleIndex = 0
+    private var refreshScheduled = false
+    private var pendingSettingsChange = false
 
     var renderedTitle: NSAttributedString { statusItem.button?.attributedTitle ?? NSAttributedString() }
+    private(set) var refreshCount = 0
     var statusButtonSubviewCount: Int { statusItem.button?.subviews.count ?? 0 }
     var renderedLength: CGFloat { statusItem.length }
     var statusButton: NSStatusBarButton? { statusItem.button }
@@ -157,23 +176,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         configureStatusItem()
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 390, height: 520)
+        popover.contentSize = NativePopoverViewController.contentSize
         popover.delegate = self
 
         coordinator.objectWillChange.sink { [weak self] in
-            Task { @MainActor in
-                await Task.yield()
-                self?.refresh()
-            }
+            self?.scheduleRefresh(settingsChanged: false)
         }.store(in: &cancellables)
         settings.objectWillChange.sink { [weak self] in
-            Task { @MainActor in
-                await Task.yield()
-                self?.settingsChanged()
-            }
+            self?.scheduleRefresh(settingsChanged: true)
         }.store(in: &cancellables)
 
-        settingsChanged()
+        applySettingsChange()
     }
 
     func close() {
@@ -196,7 +209,25 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.cell?.wraps = true
     }
 
-    private func settingsChanged() {
+    private func scheduleRefresh(settingsChanged: Bool) {
+        pendingSettingsChange = pendingSettingsChange || settingsChanged
+        guard !refreshScheduled else { return }
+        refreshScheduled = true
+        Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            refreshScheduled = false
+            let applySettings = pendingSettingsChange
+            pendingSettingsChange = false
+            if applySettings {
+                applySettingsChange()
+            } else {
+                refresh()
+            }
+        }
+    }
+
+    private func applySettingsChange() {
         cycleIndex = 0
         updateCycleTask()
         refresh()
@@ -225,6 +256,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func refresh() {
         guard let button = statusItem.button else { return }
+        refreshCount += 1
         let attributedTitle = StatusItemLabelBuilder.make(
             coordinator: coordinator,
             settings: settings,
@@ -256,13 +288,16 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
 
     private func preparePopoverIfNeeded() {
         guard popover.contentViewController == nil else { return }
-        popover.contentViewController = NSHostingController(rootView: MeterPopoverView(
+        popover.contentViewController = NativePopoverViewController(
             coordinator: coordinator,
             settings: settings,
             openSettings: { [weak self] in
                 self?.openSettings()
+            },
+            quit: {
+                NSApp.terminate(nil)
             }
-        ))
+        )
     }
 
     func openSettings() {
@@ -271,6 +306,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     }
 
     func popoverDidClose(_ notification: Notification) {
-        popover.contentViewController = nil
+        // Retain and reuse one native AppKit tree. Recreating the previous
+        // SwiftUI host on every click caused a ~30 MiB cold allocation and
+        // crossed the release RSS ceiling while the popover was visible.
     }
 }

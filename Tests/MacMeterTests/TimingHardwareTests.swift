@@ -1,6 +1,5 @@
 import AppKit
 import Combine
-import SwiftUI
 import XCTest
 @testable import MacMeter
 
@@ -26,19 +25,25 @@ final class TimingHardwareTests: XCTestCase {
         var timestamps: [Date] = []
         var renderLatencies: [TimeInterval] = []
         var renderFailures = 0
-        let hostingView = NSHostingView(rootView: MenuBarLabelView(coordinator: coordinator, settings: settings))
-        hostingView.frame = NSRect(x: 0, y: 0, width: 600, height: 44)
-        hostingView.wantsLayer = true
-        hostingView.layoutSubtreeIfNeeded()
+        let renderedLabel = NSTextField(labelWithString: "")
+        renderedLabel.frame = NSRect(x: 0, y: 0, width: 600, height: 44)
+        renderedLabel.wantsLayer = true
+        renderedLabel.layoutSubtreeIfNeeded()
 
-        coordinator.$lastUpdated.compactMap { $0 }.sink { date in
+        coordinator.$lastUpdated.sink { candidate in
+            guard let date = candidate else { return }
             timestamps.append(date)
-            hostingView.needsLayout = true
-            hostingView.needsDisplay = true
-            hostingView.layoutSubtreeIfNeeded()
-            hostingView.displayIfNeeded()
-            if let representation = hostingView.bitmapImageRepForCachingDisplay(in: hostingView.bounds) {
-                hostingView.cacheDisplay(in: hostingView.bounds, to: representation)
+            renderedLabel.attributedStringValue = StatusItemLabelBuilder.make(
+                coordinator: coordinator,
+                settings: settings,
+                cycleIndex: 0
+            )
+            renderedLabel.needsLayout = true
+            renderedLabel.needsDisplay = true
+            renderedLabel.layoutSubtreeIfNeeded()
+            renderedLabel.displayIfNeeded()
+            if let representation = renderedLabel.bitmapImageRepForCachingDisplay(in: renderedLabel.bounds) {
+                renderedLabel.cacheDisplay(in: renderedLabel.bounds, to: representation)
             } else {
                 renderFailures += 1
             }

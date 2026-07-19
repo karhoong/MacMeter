@@ -1,0 +1,632 @@
+import AppKit
+import Combine
+
+@MainActor
+final class NativePopoverViewController: NSViewController {
+    enum Identifier {
+        static let root = "MacMeter.Popover.Root"
+        static let title = "MacMeter.Popover.Title"
+        static let version = "MacMeter.Popover.Version"
+        static let scrollView = "MacMeter.Popover.ScrollView"
+        static let metricsStack = "MacMeter.Popover.Metrics"
+        static let updated = "MacMeter.Popover.Updated"
+        static let settingsButton = "MacMeter.Popover.Settings"
+        static let quitButton = "MacMeter.Popover.Quit"
+
+        static func section(_ metric: MetricID) -> String {
+            "MacMeter.Popover.\(metric.rawValue).Section"
+        }
+
+        static func unavailable(_ metric: MetricID) -> String {
+            "MacMeter.Popover.\(metric.rawValue).Unavailable"
+        }
+
+        static func value(_ metric: MetricID, _ name: String) -> String {
+            "MacMeter.Popover.\(metric.rawValue).\(name)"
+        }
+
+        static func coreRow(_ id: Int) -> String { "MacMeter.Popover.CPU.Core.\(id)" }
+        static func coreKind(_ id: Int) -> String { "MacMeter.Popover.CPU.Core.\(id).Kind" }
+        static func coreValue(_ id: Int) -> String { "MacMeter.Popover.CPU.Core.\(id).Value" }
+    }
+
+    static let contentSize = NSSize(width: 390, height: 520)
+
+    private let coordinator: MetricsCoordinator
+    private let settings: SettingsStore
+    private let appVersion: AppVersionInfo
+    private let openSettingsAction: () -> Void
+    private let quitAction: () -> Void
+
+    private var cancellables = Set<AnyCancellable>()
+    private var scheduledRefresh: Task<Void, Never>?
+    private let timeFormatter: DateFormatter
+
+    private(set) var refreshCount = 0
+    private(set) var sectionViews: [MetricID: NativePopoverMetricSectionView] = [:]
+    private(set) var coreRowViews: [Int: NativePopoverCoreRowView] = [:]
+
+    private let titleLabel = NativePopoverViewController.makeLabel(
+        identifier: Identifier.title,
+        font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+    )
+    private let versionLabel = NativePopoverViewController.makeLabel(
+        identifier: Identifier.version,
+        font: .systemFont(ofSize: NSFont.smallSystemFontSize),
+        color: .secondaryLabelColor
+    )
+    private let metricsStack = NativePopoverViewController.makeStack(
+        identifier: Identifier.metricsStack,
+        orientation: .vertical,
+        spacing: 10
+    )
+    private let updatedLabel = NativePopoverViewController.makeLabel(
+        identifier: Identifier.updated,
+        font: .systemFont(ofSize: NSFont.smallSystemFontSize),
+        color: .secondaryLabelColor
+    )
+    private(set) lazy var settingsButton: NSButton = makeButton(
+        title: "Settings…",
+        identifier: Identifier.settingsButton,
+        action: #selector(openSettingsPressed)
+    )
+    private(set) lazy var quitButton: NSButton = makeButton(
+        title: "Quit",
+        identifier: Identifier.quitButton,
+        action: #selector(quitPressed)
+    )
+
+    private let cpuAvailableStack = NativePopoverViewController.makeStack(orientation: .vertical, spacing: 5)
+    private let cpuOverallRow = NativePopoverValueRowView(
+        title: "Overall",
+        valueIdentifier: Identifier.value(.cpu, "Overall")
+    )
+    private let cpuSummedRow = NativePopoverValueRowView(
+        title: "All cores",
+        valueIdentifier: Identifier.value(.cpu, "Summed")
+    )
+    private let cpuCoreStack = NativePopoverViewController.makeStack(orientation: .vertical, spacing: 3)
+
+    private let temperatureAvailableStack = NativePopoverViewController.makeStack(orientation: .vertical, spacing: 5)
+    private let temperatureValueRow = NativePopoverValueRowView(
+        title: "Hottest",
+        valueIdentifier: Identifier.value(.temperature, "Hottest")
+    )
+    private let temperatureSensorRow = NativePopoverValueRowView(
+        title: "Sensors",
+        valueIdentifier: Identifier.value(.temperature, "Sensors")
+    )
+
+    private let networkAvailableStack = NativePopoverViewController.makeStack(orientation: .vertical, spacing: 5)
+    private let networkInboundRow = NativePopoverValueRowView(
+        title: "Inbound",
+        valueIdentifier: Identifier.value(.network, "Inbound")
+    )
+    private let networkOutboundRow = NativePopoverValueRowView(
+        title: "Outbound",
+        valueIdentifier: Identifier.value(.network, "Outbound")
+    )
+    private let networkInterfacesRow = NativePopoverValueRowView(
+        title: "Interfaces",
+        valueIdentifier: Identifier.value(.network, "Interfaces")
+    )
+
+    private let batteryAvailableStack = NativePopoverViewController.makeStack(orientation: .vertical, spacing: 5)
+    private let batteryPowerRow = NativePopoverValueRowView(
+        title: "Idle",
+        valueIdentifier: Identifier.value(.battery, "Power")
+    )
+
+    init(
+        coordinator: MetricsCoordinator,
+        settings: SettingsStore,
+        appVersion: AppVersionInfo = .current,
+        openSettings: @escaping () -> Void = {},
+        quit: @escaping () -> Void = { NSApp.terminate(nil) }
+    ) {
+        self.coordinator = coordinator
+        self.settings = settings
+        self.appVersion = appVersion
+        openSettingsAction = openSettings
+        quitAction = quit
+
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .medium
+        timeFormatter = formatter
+
+        super.init(nibName: nil, bundle: nil)
+        preferredContentSize = Self.contentSize
+        observeModel()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func loadView() {
+        let root = NSView(frame: NSRect(origin: .zero, size: Self.contentSize))
+        root.identifier = NSUserInterfaceItemIdentifier(Identifier.root)
+        view = root
+
+        titleLabel.stringValue = "MacMeter"
+        titleLabel.setAccessibilityLabel("MacMeter")
+        versionLabel.stringValue = appVersion.displayLabel
+        versionLabel.setAccessibilityLabel(appVersion.displayLabel)
+
+        let header = Self.makeStack(orientation: .horizontal, spacing: 8)
+        header.addArrangedSubview(titleLabel)
+        header.addArrangedSubview(Self.makeFlexibleSpacer())
+        header.addArrangedSubview(versionLabel)
+
+        buildMetricSections()
+
+        let scrollView = NSScrollView()
+        scrollView.identifier = NSUserInterfaceItemIdentifier(Identifier.scrollView)
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.documentView = metricsStack
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        metricsStack.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            metricsStack.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            metricsStack.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            metricsStack.topAnchor.constraint(equalTo: scrollView.contentView.topAnchor),
+            metricsStack.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor)
+        ])
+
+        settingsButton.setAccessibilityLabel("Open MacMeter Settings")
+        quitButton.setAccessibilityLabel("Quit MacMeter")
+        let footer = Self.makeStack(orientation: .horizontal, spacing: 8)
+        footer.addArrangedSubview(updatedLabel)
+        footer.addArrangedSubview(Self.makeFlexibleSpacer())
+        footer.addArrangedSubview(settingsButton)
+        footer.addArrangedSubview(quitButton)
+
+        let rootStack = Self.makeStack(orientation: .vertical, spacing: 10)
+        rootStack.translatesAutoresizingMaskIntoConstraints = false
+        rootStack.addArrangedSubview(header)
+        rootStack.addArrangedSubview(Self.makeSeparator())
+        rootStack.addArrangedSubview(scrollView)
+        rootStack.addArrangedSubview(Self.makeSeparator())
+        rootStack.addArrangedSubview(footer)
+        root.addSubview(rootStack)
+
+        NSLayoutConstraint.activate([
+            rootStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
+            rootStack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
+            rootStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
+            rootStack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
+            scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
+        ])
+
+        refreshFromModel()
+    }
+
+    override func viewWillAppear() {
+        super.viewWillAppear()
+        refreshFromModel()
+    }
+
+    func sectionView(for metric: MetricID) -> NSView? {
+        sectionViews[metric]
+    }
+
+    func coreRowView(for id: Int) -> NativePopoverCoreRowView? {
+        coreRowViews[id]
+    }
+
+    func refreshFromModel() {
+        guard isViewLoaded else { return }
+        refreshCount += 1
+
+        updateCPU()
+        updateTemperature()
+        updateNetwork()
+        updateBattery()
+
+        sectionViews[.cpu]?.isHidden = !settings.cpuEnabled
+        sectionViews[.temperature]?.isHidden = !settings.temperatureEnabled
+        sectionViews[.network]?.isHidden = !settings.networkEnabled
+        sectionViews[.battery]?.isHidden = !settings.batteryEnabled
+
+        if let date = coordinator.lastUpdated {
+            updatedLabel.stringValue = "Updated \(timeFormatter.string(from: date))"
+            updatedLabel.setAccessibilityLabel("Last updated \(timeFormatter.string(from: date))")
+        } else {
+            updatedLabel.stringValue = "Waiting for data"
+            updatedLabel.setAccessibilityLabel("Waiting for data")
+        }
+    }
+
+    private func observeModel() {
+        coordinator.objectWillChange.sink { [weak self] in
+            MainActor.assumeIsolated {
+                self?.scheduleRefresh()
+            }
+        }.store(in: &cancellables)
+
+        settings.objectWillChange.sink { [weak self] in
+            MainActor.assumeIsolated {
+                self?.scheduleRefresh()
+            }
+        }.store(in: &cancellables)
+    }
+
+    private func scheduleRefresh() {
+        // The retained native tree does not need to repaint while its popover
+        // is closed. It is refreshed immediately in viewWillAppear instead.
+        guard isViewLoaded, view.window != nil else { return }
+        guard scheduledRefresh == nil else { return }
+        scheduledRefresh = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard let self else { return }
+            scheduledRefresh = nil
+            refreshFromModel()
+        }
+    }
+
+    private func buildMetricSections() {
+        let cpuSection = NativePopoverMetricSectionView(metric: .cpu, title: "CPU")
+        cpuAvailableStack.addArrangedSubview(cpuOverallRow)
+        cpuAvailableStack.addArrangedSubview(cpuSummedRow)
+        cpuAvailableStack.addArrangedSubview(Self.makeSeparator())
+        cpuAvailableStack.addArrangedSubview(cpuCoreStack)
+        cpuSection.setAvailableView(cpuAvailableStack)
+        addSection(cpuSection, metric: .cpu)
+
+        let temperatureSection = NativePopoverMetricSectionView(metric: .temperature, title: "SoC Temperature")
+        temperatureAvailableStack.addArrangedSubview(temperatureValueRow)
+        temperatureAvailableStack.addArrangedSubview(temperatureSensorRow)
+        temperatureSection.setAvailableView(temperatureAvailableStack)
+        addSection(temperatureSection, metric: .temperature)
+
+        let networkSection = NativePopoverMetricSectionView(metric: .network, title: "Network")
+        networkAvailableStack.addArrangedSubview(networkInboundRow)
+        networkAvailableStack.addArrangedSubview(networkOutboundRow)
+        networkAvailableStack.addArrangedSubview(networkInterfacesRow)
+        networkSection.setAvailableView(networkAvailableStack)
+        addSection(networkSection, metric: .network)
+
+        let batterySection = NativePopoverMetricSectionView(metric: .battery, title: "Battery Power")
+        batteryAvailableStack.addArrangedSubview(batteryPowerRow)
+        batterySection.setAvailableView(batteryAvailableStack)
+        addSection(batterySection, metric: .battery)
+    }
+
+    private func addSection(_ section: NativePopoverMetricSectionView, metric: MetricID) {
+        sectionViews[metric] = section
+        metricsStack.addArrangedSubview(section)
+        section.widthAnchor.constraint(equalTo: metricsStack.widthAnchor).isActive = true
+    }
+
+    private func updateCPU() {
+        guard let section = sectionViews[.cpu] else { return }
+        guard let reading = coordinator.cpu.value else {
+            section.showUnavailable(coordinator.cpu.reason)
+            return
+        }
+
+        section.showAvailable()
+        cpuOverallRow.value = MetricFormatting.percent(reading.normalized)
+        cpuSummedRow.value = MetricFormatting.percent(reading.summed)
+        reconcileCoreRows(reading.cores)
+    }
+
+    private func reconcileCoreRows(_ readings: [CoreReading]) {
+        let desiredIDs = readings.map(\.id)
+        let desiredSet = Set(desiredIDs)
+
+        let removedIDs = coreRowViews.keys.filter { !desiredSet.contains($0) }
+        for id in removedIDs {
+            guard let row = coreRowViews[id] else { continue }
+            cpuCoreStack.removeArrangedSubview(row)
+            row.removeFromSuperview()
+            coreRowViews[id] = nil
+        }
+
+        for reading in readings {
+            let row: NativePopoverCoreRowView
+            if let existing = coreRowViews[reading.id] {
+                row = existing
+            } else {
+                row = NativePopoverCoreRowView(coreID: reading.id)
+                coreRowViews[reading.id] = row
+            }
+            row.update(reading)
+        }
+
+        let arrangedIDs = cpuCoreStack.arrangedSubviews.compactMap {
+            ($0 as? NativePopoverCoreRowView)?.coreID
+        }
+        if arrangedIDs != desiredIDs {
+            for view in cpuCoreStack.arrangedSubviews {
+                cpuCoreStack.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+            for id in desiredIDs {
+                if let row = coreRowViews[id] {
+                    cpuCoreStack.addArrangedSubview(row)
+                }
+            }
+        }
+    }
+
+    private func updateTemperature() {
+        guard let section = sectionViews[.temperature] else { return }
+        guard let reading = coordinator.temperature.value else {
+            section.showUnavailable(coordinator.temperature.reason)
+            return
+        }
+
+        section.showAvailable()
+        temperatureValueRow.value = MetricFormatting.temperature(
+            reading.hottestCelsius,
+            unit: settings.temperatureUnit
+        )
+        temperatureSensorRow.value = "\(reading.sensorCount)"
+    }
+
+    private func updateNetwork() {
+        guard let section = sectionViews[.network] else { return }
+        guard let reading = coordinator.network.value else {
+            section.showUnavailable(coordinator.network.reason)
+            return
+        }
+
+        section.showAvailable()
+        networkInboundRow.value = "\(MetricFormatting.network(bytesPerSecond: reading.inboundBytesPerSecond, unit: settings.networkUnit)) \(settings.networkUnit.rawValue)"
+        networkOutboundRow.value = "\(MetricFormatting.network(bytesPerSecond: reading.outboundBytesPerSecond, unit: settings.networkUnit)) \(settings.networkUnit.rawValue)"
+        networkInterfacesRow.value = reading.interfaces.isEmpty ? "—" : reading.interfaces.joined(separator: ", ")
+    }
+
+    private func updateBattery() {
+        guard let section = sectionViews[.battery] else { return }
+        guard let reading = coordinator.battery.value else {
+            section.showUnavailable(coordinator.battery.reason)
+            return
+        }
+
+        section.showAvailable()
+        batteryPowerRow.title = reading.direction.spokenLabel
+        batteryPowerRow.value = MetricFormatting.battery(reading)
+        batteryPowerRow.valueColor = Self.batteryColor(reading.direction)
+        batteryPowerRow.setAccessibilityLabel(MetricAccessibility.battery(reading))
+    }
+
+    @objc private func openSettingsPressed() {
+        openSettingsAction()
+    }
+
+    @objc private func quitPressed() {
+        quitAction()
+    }
+
+    private func makeButton(title: String, identifier: String, action: Selector) -> NSButton {
+        let button = NSButton(title: title, target: self, action: action)
+        button.identifier = NSUserInterfaceItemIdentifier(identifier)
+        button.bezelStyle = .rounded
+        return button
+    }
+
+    private static func batteryColor(_ direction: BatteryDirection) -> NSColor {
+        switch direction.colorRole {
+        case .charging: return .systemGreen
+        case .draining: return .systemRed
+        case .idle: return .systemBlue
+        }
+    }
+
+    fileprivate static func makeLabel(
+        identifier: String? = nil,
+        font: NSFont = .systemFont(ofSize: NSFont.systemFontSize),
+        color: NSColor = .labelColor
+    ) -> NSTextField {
+        let label = NSTextField(labelWithString: "")
+        if let identifier {
+            label.identifier = NSUserInterfaceItemIdentifier(identifier)
+        }
+        label.font = font
+        label.textColor = color
+        label.lineBreakMode = .byTruncatingTail
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return label
+    }
+
+    fileprivate static func makeStack(
+        identifier: String? = nil,
+        orientation: NSUserInterfaceLayoutOrientation,
+        spacing: CGFloat
+    ) -> NSStackView {
+        let stack = NSStackView()
+        if let identifier {
+            stack.identifier = NSUserInterfaceItemIdentifier(identifier)
+        }
+        stack.orientation = orientation
+        stack.alignment = orientation == .vertical ? .leading : .centerY
+        stack.distribution = .fill
+        stack.spacing = spacing
+        return stack
+    }
+
+    fileprivate static func makeFlexibleSpacer() -> NSView {
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return spacer
+    }
+
+    fileprivate static func makeSeparator() -> NSBox {
+        let separator = NSBox()
+        separator.boxType = .separator
+        return separator
+    }
+}
+
+@MainActor
+final class NativePopoverMetricSectionView: NSBox {
+    let metric: MetricID
+    private let contentStack = NSStackView()
+    private(set) var availableView: NSView?
+    private(set) var unavailableLabel: NSTextField
+
+    init(metric: MetricID, title: String) {
+        self.metric = metric
+        unavailableLabel = NSTextField(labelWithString: "")
+        super.init(frame: .zero)
+
+        identifier = NSUserInterfaceItemIdentifier(NativePopoverViewController.Identifier.section(metric))
+        boxType = .primary
+        titlePosition = .atTop
+        self.title = title
+        contentViewMargins = NSSize(width: 10, height: 8)
+
+        unavailableLabel.identifier = NSUserInterfaceItemIdentifier(
+            NativePopoverViewController.Identifier.unavailable(metric)
+        )
+        unavailableLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        unavailableLabel.textColor = .secondaryLabelColor
+        unavailableLabel.lineBreakMode = .byWordWrapping
+        unavailableLabel.maximumNumberOfLines = 0
+        unavailableLabel.isHidden = true
+
+        contentStack.orientation = .vertical
+        contentStack.alignment = .leading
+        contentStack.distribution = .fill
+        contentStack.spacing = 5
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.addArrangedSubview(unavailableLabel)
+        contentView?.addSubview(contentStack)
+        if let contentView {
+            NSLayoutConstraint.activate([
+                contentStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                contentStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                contentStack.topAnchor.constraint(equalTo: contentView.topAnchor),
+                contentStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            ])
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func setAvailableView(_ view: NSView) {
+        availableView = view
+        contentStack.insertArrangedSubview(view, at: 0)
+    }
+
+    func showAvailable() {
+        availableView?.isHidden = false
+        unavailableLabel.isHidden = true
+    }
+
+    func showUnavailable(_ reason: String?) {
+        availableView?.isHidden = true
+        unavailableLabel.stringValue = reason ?? "Unavailable"
+        unavailableLabel.setAccessibilityLabel(reason ?? "Unavailable")
+        unavailableLabel.isHidden = false
+    }
+}
+
+@MainActor
+final class NativePopoverValueRowView: NSStackView {
+    private let titleLabel = NSTextField(labelWithString: "")
+    private(set) var valueLabel = NSTextField(labelWithString: "")
+
+    var title: String {
+        get { titleLabel.stringValue }
+        set { titleLabel.stringValue = newValue }
+    }
+
+    var value: String {
+        get { valueLabel.stringValue }
+        set { valueLabel.stringValue = newValue }
+    }
+
+    var valueColor: NSColor {
+        get { valueLabel.textColor ?? .labelColor }
+        set { valueLabel.textColor = newValue }
+    }
+
+    init(title: String, valueIdentifier: String) {
+        super.init(frame: .zero)
+        orientation = .horizontal
+        alignment = .centerY
+        distribution = .fill
+        spacing = 8
+
+        titleLabel.stringValue = title
+        titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
+        valueLabel.identifier = NSUserInterfaceItemIdentifier(valueIdentifier)
+        valueLabel.alignment = .right
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        valueLabel.lineBreakMode = .byTruncatingMiddle
+
+        addArrangedSubview(titleLabel)
+        addArrangedSubview(NativePopoverViewController.makeFlexibleSpacer())
+        addArrangedSubview(valueLabel)
+        widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+@MainActor
+final class NativePopoverCoreRowView: NSStackView {
+    let coreID: Int
+    private let coreLabel = NSTextField(labelWithString: "")
+    private(set) var kindLabel = NSTextField(labelWithString: "")
+    private(set) var valueLabel = NSTextField(labelWithString: "")
+
+    init(coreID: Int) {
+        self.coreID = coreID
+        super.init(frame: .zero)
+
+        identifier = NSUserInterfaceItemIdentifier(NativePopoverViewController.Identifier.coreRow(coreID))
+        orientation = .horizontal
+        alignment = .centerY
+        distribution = .fill
+        spacing = 6
+
+        coreLabel.stringValue = "Core \(coreID)"
+        kindLabel.identifier = NSUserInterfaceItemIdentifier(NativePopoverViewController.Identifier.coreKind(coreID))
+        kindLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+        valueLabel.identifier = NSUserInterfaceItemIdentifier(NativePopoverViewController.Identifier.coreValue(coreID))
+        valueLabel.alignment = .right
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+
+        addArrangedSubview(coreLabel)
+        addArrangedSubview(kindLabel)
+        addArrangedSubview(NativePopoverViewController.makeFlexibleSpacer())
+        addArrangedSubview(valueLabel)
+        widthAnchor.constraint(greaterThanOrEqualToConstant: 300).isActive = true
+        setAccessibilityElement(true)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func update(_ reading: CoreReading) {
+        kindLabel.stringValue = reading.kind.shortLabel
+        switch reading.kind {
+        case .efficiency: kindLabel.textColor = .systemGreen
+        case .performance: kindLabel.textColor = .systemOrange
+        case .unknown: kindLabel.textColor = .secondaryLabelColor
+        }
+        kindLabel.setAccessibilityLabel(reading.kind.displayName)
+        valueLabel.stringValue = MetricFormatting.percent(reading.utilization)
+        setAccessibilityLabel(
+            "Core \(reading.id), \(reading.kind.displayName), \(MetricFormatting.percent(reading.utilization))"
+        )
+    }
+}

@@ -1,5 +1,4 @@
 import ServiceManagement
-import SwiftUI
 import XCTest
 @testable import MacMeter
 
@@ -148,7 +147,34 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(restored.updateInterval, 10)
     }
 
-    func testMenuBarModesAndMetricCombinationsRender() throws {
+    func testNativeSettingsTabsRenderInLightAndDarkAppearances() throws {
+        let suite = "MacMeterNativeSettingsAppearances.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = NativeSettingsViewController(
+            settings: SettingsStore(defaults: defaults),
+            loginItem: LoginItemManager(service: NativeSettingsLoginItemService())
+        )
+        let root = controller.view
+        root.frame = NSRect(origin: .zero, size: controller.preferredContentSize)
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            root.appearance = try XCTUnwrap(NSAppearance(named: appearanceName))
+            for index in controller.tabViewItems.indices {
+                controller.selectedTabViewItemIndex = index
+                root.needsLayout = true
+                root.needsDisplay = true
+                root.layoutSubtreeIfNeeded()
+                root.displayIfNeeded()
+                let representation = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
+                root.cacheDisplay(in: root.bounds, to: representation)
+                XCTAssertGreaterThan(representation.pixelsWide, 0)
+                XCTAssertGreaterThan(representation.pixelsHigh, 0)
+            }
+        }
+    }
+
+    func testNativeMenuBarModesAndMetricCombinationsRenderEverySelection() {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
 
@@ -156,37 +182,39 @@ final class ViewRenderingTests: XCTestCase {
             for mask in 0..<16 {
                 fixture.settings.displayMode = mode
                 setMetricMask(mask, settings: fixture.settings)
-                let image = try XCTUnwrap(render(MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)))
-                XCTAssertGreaterThan(image.size.width, 0)
-                XCTAssertGreaterThan(image.size.height, 0)
+                let title = StatusItemLabelBuilder.make(
+                    coordinator: fixture.coordinator,
+                    settings: fixture.settings,
+                    cycleIndex: 0
+                )
+                let accessibility = StatusItemLabelBuilder.accessibilityLabel(
+                    coordinator: fixture.coordinator,
+                    settings: fixture.settings,
+                    cycleIndex: 0
+                )
+                XCTAssertFalse(title.string.isEmpty)
+                XCTAssertFalse(accessibility.isEmpty)
             }
         }
     }
 
-    func testPersistentCompactLabelResistsCompressionForEveryMetricSelection() {
+    func testNativeCompactLabelFitsEveryMetricSelection() {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
         fixture.settings.displayMode = .compact
-        setMetricMask(1, settings: fixture.settings)
-
-        let hostingController = NSHostingController(rootView: MenuBarLabelView(
-            coordinator: fixture.coordinator,
-            settings: fixture.settings
-        ))
-        let host = hostingController.view
-        host.frame = NSRect(x: 0, y: 0, width: 120, height: 24)
-        host.layoutSubtreeIfNeeded()
         for mask in 1..<16 {
             setMetricMask(mask, settings: fixture.settings)
-            RunLoop.main.run(until: Date().addingTimeInterval(0.01))
-            host.needsLayout = true
-            host.layoutSubtreeIfNeeded()
-            let ideal = hostingController.sizeThatFits(in: CGSize(width: 1_000, height: 40))
-            let constrained = hostingController.sizeThatFits(in: CGSize(width: 1, height: 40))
-
-            XCTAssertEqual(constrained.width, ideal.width, accuracy: 1, "Selection mask \(mask) compressed horizontally")
-            XCTAssertLessThanOrEqual(ideal.width, 180, "Selection mask \(mask) is too wide for compact display")
-            XCTAssertLessThanOrEqual(ideal.height, 24, "Selection mask \(mask) is too tall for the menu bar")
+            let title = StatusItemLabelBuilder.make(
+                coordinator: fixture.coordinator,
+                settings: fixture.settings,
+                cycleIndex: 0
+            )
+            let bounds = title.boundingRect(
+                with: NSSize(width: 1_000, height: 64),
+                options: [.usesLineFragmentOrigin, .usesFontLeading]
+            )
+            XCTAssertLessThanOrEqual(bounds.width, 180, "Selection mask \(mask) is too wide for compact display")
+            XCTAssertLessThanOrEqual(bounds.height, 24, "Selection mask \(mask) is too tall for the menu bar")
         }
     }
 
@@ -233,86 +261,7 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(MenuBarPresentation.temperature(temperature, unit: .fahrenheit), "176°F")
     }
 
-    func testMenuBarAppearanceTextSizeAndConstrainedCycleMatrixRenders() throws {
-        let fixture = makeFixture()
-        defer { fixture.cleanup() }
-        let appearances: [ColorScheme] = [.light, .dark]
-        let textSizes: [DynamicTypeSize] = [.small, .large, .accessibility3]
-
-        for mode in DisplayMode.allCases {
-            for mask in 0..<16 {
-                for appearance in appearances {
-                    for textSize in textSizes {
-                        fixture.settings.displayMode = mode
-                        setMetricMask(mask, settings: fixture.settings)
-                        let view = MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)
-                            .environment(\.colorScheme, appearance)
-                            .environment(\.dynamicTypeSize, textSize)
-                        let image = try XCTUnwrap(render(view))
-                        XCTAssertGreaterThan(image.size.width, 0)
-                        XCTAssertLessThanOrEqual(image.size.height, 64)
-                    }
-                }
-            }
-        }
-
-        fixture.settings.displayMode = .cycle
-        setMetricMask(15, settings: fixture.settings)
-        for metricIndex in 0..<4 {
-            let controller = CycleController(clock: StepSamplingClock(steps: 0), initialIndex: metricIndex)
-            let intrinsic = MenuBarLabelView(
-                coordinator: fixture.coordinator,
-                settings: fixture.settings,
-                cycleController: controller
-            )
-            let intrinsicImage = try XCTUnwrap(render(intrinsic))
-            XCTAssertLessThanOrEqual(intrinsicImage.size.width, 136, "Cycle page \(metricIndex) exceeds constrained width")
-            XCTAssertLessThanOrEqual(intrinsicImage.size.height, 40)
-        }
-
-        let constrainedBudgets: [(DisplayMode, CGFloat)] = [(.compact, 180)]
-        for (mode, widthBudget) in constrainedBudgets {
-            fixture.settings.displayMode = mode
-            setMetricMask(15, settings: fixture.settings)
-            for textSize in textSizes {
-                let constrained = MenuBarLabelView(coordinator: fixture.coordinator, settings: fixture.settings)
-                    .environment(\.dynamicTypeSize, textSize)
-                let image = try XCTUnwrap(render(constrained))
-                XCTAssertLessThanOrEqual(
-                    image.size.width,
-                    widthBudget,
-                    "\(mode.title) at \(textSize) exceeds its constrained menu-bar budget"
-                )
-                XCTAssertLessThanOrEqual(image.size.height, 40)
-            }
-        }
-    }
-
-    func testPopoverAndSettingsRenderWithLiveFixtureValues() throws {
-        let fixture = makeFixture()
-        defer { fixture.cleanup() }
-
-        for appearance in [ColorScheme.light, .dark] {
-            for textSize in [DynamicTypeSize.small, .large, .accessibility3] {
-                XCTAssertNotNil(render(
-                    MeterPopoverView(
-                        coordinator: fixture.coordinator,
-                        settings: fixture.settings,
-                        appVersion: AppVersionInfo(version: "0.1.0", build: "1")
-                    )
-                        .environment(\.colorScheme, appearance)
-                        .environment(\.dynamicTypeSize, textSize)
-                ))
-                XCTAssertNotNil(render(
-                    MacMeterSettingsView(settings: fixture.settings, loginItem: LoginItemManager())
-                        .environment(\.colorScheme, appearance)
-                        .environment(\.dynamicTypeSize, textSize)
-                ))
-            }
-        }
-    }
-
-    func testUnavailableStatesRender() {
+    func testNativeUnavailableStatesRemainVisible() {
         let suite = "MacMeterViewTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -326,44 +275,17 @@ final class ViewRenderingTests: XCTestCase {
             startAutomatically: false
         )
         coordinator.sampleNow()
-        XCTAssertNotNil(render(MenuBarLabelView(coordinator: coordinator, settings: settings)))
-        XCTAssertNotNil(render(MeterPopoverView(coordinator: coordinator, settings: settings)))
+        let title = StatusItemLabelBuilder.make(coordinator: coordinator, settings: settings, cycleIndex: 0)
+        let accessibility = StatusItemLabelBuilder.accessibilityLabel(
+            coordinator: coordinator,
+            settings: settings,
+            cycleIndex: 0
+        )
+        XCTAssertTrue(title.string.contains("—"))
+        XCTAssertTrue(accessibility.contains("unavailable"))
     }
 
-    func testBatteryDirectionsRenderRedGreenAndBlue() throws {
-        let cases: [(BatteryPowerReading, DominantColor)] = [
-            (BatteryPowerReading(watts: 8.4, direction: .draining), .red),
-            (BatteryPowerReading(watts: 30, direction: .charging), .green),
-            (BatteryPowerReading(watts: 0, direction: .idle), .blue)
-        ]
-
-        for (reading, expectedColor) in cases {
-            let suite = "MacMeterBatteryColorTests.\(UUID().uuidString)"
-            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-            defer { defaults.removePersistentDomain(forName: suite) }
-            let settings = SettingsStore(defaults: defaults)
-            setMetricMask(8, settings: settings)
-            let coordinator = MetricsCoordinator(
-                settings: settings,
-                cpuProvider: FakeCPUProvider(),
-                temperatureProvider: FakeTemperatureProvider(),
-                networkProvider: FakeNetworkProvider(),
-                batteryProvider: StaticBatteryProvider(reading: reading),
-                startAutomatically: false
-            )
-            coordinator.sampleNow()
-            let image = try XCTUnwrap(render(
-                MenuBarLabelView(coordinator: coordinator, settings: settings)
-                    .environment(\.colorScheme, .light)
-            ))
-            XCTAssertTrue(
-                containsDominantColor(expectedColor, in: image),
-                "Battery \(reading.direction.rawValue) did not render \(expectedColor)"
-            )
-        }
-    }
-
-    func testNativeStatusLabelUsesSmallFontAndEverySelectedMetric() throws {
+    func testNativeStatusLabelUsesReadableBoldFontColorsAndEverySelectedMetric() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
         setMetricMask(15, settings: fixture.settings)
@@ -376,7 +298,18 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(label.string, "↑0.4↓3.2MB/s\n50% | 55°C | D 8.4W")
         label.enumerateAttribute(.font, in: NSRange(location: 0, length: label.length)) { value, _, _ in
             XCTAssertEqual((value as? NSFont)?.pointSize, StatusItemLabelBuilder.fontSize)
+            XCTAssertEqual((value as? NSFont)?.fontDescriptor.symbolicTraits.contains(.bold), true)
         }
+        let uploadRange = (label.string as NSString).range(of: "↑0.4")
+        let downloadRange = (label.string as NSString).range(of: "↓3.2MB/s")
+        XCTAssertEqual(
+            label.attribute(.foregroundColor, at: uploadRange.location, effectiveRange: nil) as? NSColor,
+            .systemRed
+        )
+        XCTAssertEqual(
+            label.attribute(.foregroundColor, at: downloadRange.location, effectiveRange: nil) as? NSColor,
+            .systemGreen
+        )
         let batteryRange = (label.string as NSString).range(of: "D 8.4W")
         XCTAssertEqual(
             label.attribute(.foregroundColor, at: batteryRange.location, effectiveRange: nil) as? NSColor,
@@ -439,7 +372,26 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(bounds.width) + 8)
     }
 
-    func testStatusButtonOpensLazyPopoverAndSettingsActionClosesIt() {
+    func testStatusControllerCoalescesOneSamplingBurstIntoOneRefresh() {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        let controller = StatusItemController(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            settingsWindowController: SettingsWindowController(
+                settings: fixture.settings,
+                loginItem: LoginItemManager()
+            )
+        )
+        defer { controller.close() }
+
+        let before = controller.refreshCount
+        fixture.coordinator.sampleNow(at: Date(timeIntervalSince1970: 2_000))
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertEqual(controller.refreshCount, before + 1)
+    }
+
+    func testStatusButtonLazilyCreatesAndReusesOneNativePopoverTree() {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
         let settingsWindowController = SettingsWindowController(
@@ -470,8 +422,10 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertFalse(controller.isPopoverPrepared)
         controller.statusButton?.performClick(nil)
         XCTAssertTrue(controller.isPopoverPrepared)
-        let releasedPopoverHost = WeakReference(controller.popoverContentViewController)
-        XCTAssertNotNil(releasedPopoverHost.value)
+        var firstHost = controller.popoverContentViewController
+        XCTAssertNotNil(firstHost)
+        let releasedPopoverHost = WeakReference(firstHost)
+        XCTAssertTrue(firstHost is NativePopoverViewController)
         XCTAssertEqual(presentedHostIdentities.count, 1)
         XCTAssertEqual(dismissCount, 0)
 
@@ -481,61 +435,25 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertTrue(settingsWindowController.window?.isVisible == true)
 
         controller.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
-        XCTAssertFalse(controller.isPopoverPrepared)
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
-        XCTAssertNil(releasedPopoverHost.value)
+        XCTAssertTrue(controller.isPopoverPrepared)
+        XCTAssertTrue(firstHost === controller.popoverContentViewController)
 
         controller.statusButton?.performClick(nil)
         XCTAssertTrue(controller.isPopoverPrepared)
-        let releasedSecondPopoverHost = WeakReference(controller.popoverContentViewController)
         XCTAssertEqual(presentedHostIdentities.count, 2)
-        XCTAssertNotEqual(presentedHostIdentities[0], presentedHostIdentities[1])
+        XCTAssertEqual(presentedHostIdentities[0], presentedHostIdentities[1])
 
-        controller.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
+        for _ in 0..<25 {
+            controller.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
+            controller.statusButton?.performClick(nil)
+            XCTAssertTrue(firstHost === controller.popoverContentViewController)
+        }
+
+        firstHost = nil
+        controller.close()
         XCTAssertFalse(controller.isPopoverPrepared)
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
-        XCTAssertNil(releasedSecondPopoverHost.value)
-    }
-
-    private func render<V: View>(_ view: V) -> NSImage? {
-        let renderer = ImageRenderer(content: view.padding(8).frame(minWidth: 120, minHeight: 32))
-        renderer.scale = 2
-        return renderer.nsImage
-    }
-
-    private enum DominantColor: CustomStringConvertible {
-        case red
-        case green
-        case blue
-
-        var description: String {
-            switch self {
-            case .red: return "red"
-            case .green: return "green"
-            case .blue: return "blue"
-            }
-        }
-    }
-
-    private func containsDominantColor(_ expected: DominantColor, in image: NSImage) -> Bool {
-        guard let data = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: data) else { return false }
-        for y in 0..<bitmap.pixelsHigh {
-            for x in 0..<bitmap.pixelsWide {
-                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB),
-                      color.alphaComponent > 0.1 else { continue }
-                let red = color.redComponent
-                let green = color.greenComponent
-                let blue = color.blueComponent
-                switch expected {
-                case .red where red > 0.35 && red > green * 1.25 && red > blue * 1.25: return true
-                case .green where green > 0.35 && green > red * 1.25 && green > blue * 1.25: return true
-                case .blue where blue > 0.35 && blue > red * 1.25 && blue > green * 1.25: return true
-                default: continue
-                }
-            }
-        }
-        return false
+        XCTAssertNil(releasedPopoverHost.value)
     }
 
     private func setMetricMask(_ mask: Int, settings: SettingsStore) {

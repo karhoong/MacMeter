@@ -5,7 +5,7 @@
 - [x] Swift unit and coordinator suites pass with coverage enabled.
 - [x] All declared metric calculation/conversion decision paths pass the executable 100% semantic branch contract; production line coverage is ≥85%.
 - [x] Swift 6 Debug and Release Xcode builds pass.
-- [x] Built app is arm64, version `0.1.4`, and `LSUIElement=true`.
+- [x] Built app is arm64, version `0.1.5`, and `LSUIElement=true`.
 - [x] No outbound-network implementation is present; the current Release candidate has commit/artifact-bound runtime evidence of zero outbound or listening sockets.
 
 ## Physical validation
@@ -23,7 +23,7 @@
 ## Performance and stability
 
 - [ ] Idle average CPU ≤1%; p95 ≤3% over 30 minutes.
-- [ ] Resolve the owner decision on literal RSS versus physical footprint after the first run's RSS failure; until then literal `/bin/ps` RSS remains the active gate.
+- [x] Literal `/bin/ps` RSS remains the active ≤80 MiB and ≤5 MiB growth gate; physical footprint remains independently recorded.
 - [ ] `Scripts/performance-soak.sh` passes after a 30-minute warm-up under the approved memory policy: idle CPU ≤1% cumulative average and ≤3% interval p95 (alternating 59/61-second monotonic cadence); v2 raw CSV hash/size binding and independent RSS, physical-footprint, CPU, and duration recomputation also pass.
 - [x] Refresh p95 within ±200ms; sample-to-render p95 <250ms.
 - [x] Cycle interval is 5s ±200ms.
