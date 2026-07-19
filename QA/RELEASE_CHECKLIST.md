@@ -5,7 +5,7 @@
 - [x] Swift unit and coordinator suites pass with coverage enabled.
 - [x] All declared metric calculation/conversion decision paths pass the executable 100% semantic branch contract; production line coverage is ≥85%.
 - [x] Swift 6 Debug and Release Xcode builds pass.
-- [ ] Rebuild and verify the arm64 `1.0.2` release with `LSUIElement=true` and compiled `AppIcon.icns`.
+- [x] Rebuild and verify the arm64 `1.0.2` release with `LSUIElement=true` and compiled `AppIcon.icns`.
 - [x] No outbound-network implementation is present; the current Release candidate has commit/artifact-bound runtime evidence of zero outbound or listening sockets.
 
 ## Physical validation
@@ -28,6 +28,6 @@
 
 ## Authority
 
-- [ ] QA readiness recorded for `1.0.2`.
-- [ ] Product-manager readiness recorded for `1.0.2`.
+- [x] QA readiness recorded for `1.0.2`.
+- [x] Product-manager readiness recorded for `1.0.2`.
 - [x] Owner explicitly said **pass** and authorized promotion to `1.0.0`.
