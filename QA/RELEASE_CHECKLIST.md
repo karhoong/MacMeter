@@ -5,7 +5,7 @@
 - [x] Swift unit and coordinator suites pass with coverage enabled.
 - [x] All declared metric calculation/conversion decision paths pass the executable 100% semantic branch contract; production line coverage is ≥85%.
 - [x] Swift 6 Debug and Release Xcode builds pass.
-- [x] Built preview app is arm64, version `0.1.6`, and `LSUIElement=true`; exact clean-candidate QA rerun pending.
+- [x] Rebuild and verify the arm64 `1.0.0` release with `LSUIElement=true`.
 - [x] No outbound-network implementation is present; the current Release candidate has commit/artifact-bound runtime evidence of zero outbound or listening sockets.
 
 ## Physical validation
@@ -27,10 +27,10 @@
 - [ ] `Scripts/performance-soak.sh` passes after a 30-minute warm-up under the approved memory policy: idle CPU ≤1% cumulative average and ≤3% interval p95 (alternating 59/61-second monotonic cadence); v2 raw CSV hash/size binding and independent RSS, physical-footprint, CPU, and duration recomputation also pass.
 - [x] Refresh p95 within ±200ms; sample-to-render p95 <250ms.
 - [x] Cycle interval is 5s ±200ms.
-- [ ] Seven-day physical soak completed before owner considers `1.0.0`.
+- [ ] Seven-day physical soak evidence completed (owner explicitly approved `1.0.0` before this evidence was available).
 
 ## Authority
 
 - [ ] QA readiness recorded.
 - [ ] Product-manager readiness recorded.
-- [ ] Version remains `0.x` until the owner explicitly says **pass**.
+- [x] Owner explicitly said **pass** and authorized promotion to `1.0.0`.

@@ -23,6 +23,6 @@ version="$(macmeter_build_setting "$project_root" MARKETING_VERSION)"
 build="$(macmeter_build_setting "$project_root" CURRENT_PROJECT_VERSION)"
 test -n "$version"
 test -n "$build"
-macmeter_validate_release_version "$version" ""
+macmeter_validate_release_version "$version" "${MACMETER_OWNER_APPROVAL:-}"
 
 echo "Version policy checks passed for $version ($build)"

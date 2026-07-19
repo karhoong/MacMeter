@@ -1,24 +1,24 @@
 # MacMeter automated QA evidence
 
 Date: 2026-07-19  
-Candidate: 0.1.6 (build 1)
+Candidate: 1.0.0 (build 1)
 Hardware: Apple M4 Max, 16 cores (12 Performance, 4 Efficiency)  
-Status: automated/local preview checks pass; production release evidence remains incomplete
+Status: automated/local `1.0.0` checks pass; external distribution and long-running evidence remain incomplete
 
 ## Passing
 
-- Provisional full `bash Scripts/qa.sh`: 84 XCTest cases, 0 failures, plus version, timing-evidence, raw-performance-evidence, and runtime-privacy mutation suites. Independent QA separately reran the focused 29-test formatter/AppKit surface and complete bounded suite with zero failures. Exact clean-commit timing/privacy evidence and PM review follow candidate freeze.
-- Production Swift line coverage: 2,049/2,188 (93.65%).
+- The complete `1.0.0` suite passed 88 tests with zero failures, including the owner-approved status-bar rendering and a full Cycle-render matrix for every enabled metric selection.
+- Production Swift line coverage: 2,104/2,226 lines (94.52%), above the 85% release gate.
 - All 33 declared metric calculation/conversion decision paths are exercised by an executable set-equality contract, including CPU counter reset/zero/kind paths, every network rejection, unit, and compact-decimal mode, all battery directions, Celsius/Fahrenheit conversion, temperature bounds, and formatting paths. Battery precision fixtures include nonzero currents from ±1 mA through ±50 mA.
 - Live providers: CPU/topology, physical-interface network rates, battery power, and SoC temperature. The M4 Max live test now requires a valid temperature through the read-only AppleSMC fallback and a cached refresh below 250 ms.
 - SoC classifier fixtures: hottest valid exact `SOC MTR Temp`; hottest valid AppleSMC CPU/GPU die key (`Tp`/`Te`/`Tg`/`TCMz`); duplicate names; rejected `PMU tdie`, battery, SSD, and chassis substitution; invalid values; unrelated sensors; and empty input.
 - Deterministic raw-provider fixtures cover active `en*` selection while excluding down, non-running, loopback, bridge, and tunnel devices; network source failure; missing battery/property telemetry; every inconsistent battery direction/state; and charge/drain/idle values.
 - Coordinator: disabled-provider polling, fresh rate baselines, immediate enable-sample timestamps, unavailable enable isolation, provider failure isolation, injected clock, exact interval restart, and cancellation.
 - Login item service: injected enable, disable, approval-required, not-found, and error paths.
-- Swift 6 Release Xcode build; arm64; bundle `com.karhoong.MacMeter`; `LSUIElement=true`; `0.1.6 (1)`.
+- Swift 6 Debug and Release Xcode builds pass; the Release artifact is arm64, bundle `com.karhoong.MacMeter`, `LSUIElement=true`, and version `1.0.0 (1)`.
 - Static outbound-network source and linked-framework gates. Every QA Release candidate also undergoes a 10-second, one-second-cadence `lsof` observation of its exact child PID with all four providers forced on at the default two-second refresh; commit/dirty state, binary SHA-256, version/build, hardware, timestamps, configuration, method, observer provenance, liveness, and zero outbound/listening sockets are recorded in ignored `QA/latest-runtime-privacy.json` and revalidated fail-closed.
-- Live M4 timing gates enforce refresh p95 error ≤200 ms, AppKit-host paint p95 <250 ms with a non-nil cached bitmap, and five-second cycle p95 error ≤200 ms. Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
-- Native UI matrix: Compact/Cycle × all 16 metric combinations, constrained-width assertions, and light/dark bitmap rendering for the complete popover and every Settings tab. The production label is a native `NSStatusItem` attributed string with executable assertions that every segment uses a readable 9-point semibold monospaced font. `0.1.6` derives its natural line box from AppKit font metrics and the current menu-bar height, moves a two-line title downward to protect top-row ascenders, inserts an explicit upload/download space, applies a dark rounded native button layer, and uses fixed bright red/green/blue plus high-contrast neutral colors. Dedicated semantic regressions prove all 15 non-empty Compact selections contain every enabled metric exactly once and lock the all-four title to `↑0.0 ↓0.5MB/s\n50% | 80°C | D 12W`, including Fahrenheit.
+- Live M4 timing gates pass: refresh p95 error 108 ms (≤200 ms), AppKit-host paint p95 61 ms (<250 ms) with zero render failures, and five-second cycle p95 error 55 ms (≤200 ms). Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
+- Native UI matrix: Compact/Cycle × all 16 metric combinations, constrained-width assertions, and light/dark bitmap rendering for the complete popover and every Settings tab. The production label is a native `NSStatusItem` attributed string with executable assertions that every segment uses a readable 9-point semibold monospaced font. `1.0.0` derives its natural line box from AppKit font metrics and centers the cell's measured title rectangle inside the actual button height, with display-scale-aware pixel alignment. The layer remains unclipped while retaining the rounded dark background. The pixel regression requires symmetric vertical ink margins to within one physical pixel. Upload/download keep an explicit space; fixed bright red/green/blue and high-contrast neutral colors remain.
 - The native status title is applied directly to `NSStatusBarButton.attributedTitle` with zero custom status-button subviews. Both the details popover and Settings are stable native AppKit trees; the Release target contains no `import SwiftUI` or `NSHostingController` and does not link SwiftUI. A 25-cycle Settings regression and 30-update/25-open popover regressions lock root, section, and core-row identity. Closed popovers stop repainting and refresh immediately before appearing.
 - The status-button interaction regression performs a real `NSStatusBarButton.performClick`, proves one lazy native popover tree is prepared, presented, and reused across 25 cycles, then exercises the shared Settings action and verifies popover dismissal plus a visible `MacMeter.Settings` window. Production sampling bursts are coalesced into one status-title refresh.
 - Native Settings interaction coverage exercises all metric toggles, CPU convention, Celsius/Fahrenheit, all network units, Compact/Cycle, all refresh rates, and Launch at Login, then reconstructs the store to prove immediate persistence.
@@ -32,6 +32,7 @@ Status: automated/local preview checks pass; production release evidence remains
 - The exact clean `0.1.4` rerun failed closed at measurement sample 47: RSS jumped 52,624→82,512 KiB and physical footprint 19,280→42,544 KiB in one valid interval, matching the remaining cold SwiftUI popover allocation. Commit/binary-bound evidence and its manifest are archived at ignored `QA/performance-failures/20260719-2051-rss-limit-0.1.4/`.
 - `0.1.5` replaces that final SwiftUI host with one reused native AppKit popover, removes SwiftUI from the production source/link graph, coalesces each multi-publisher sampling burst into one status refresh, and stops hidden-popover repainting. A new exact-artifact definitive soak is required.
 - The exact `0.1.5` soak started cleanly and remained stable for eight warm-up minutes (maximum 52,560 KiB RSS, 18,880 KiB physical footprint, 0.018% interval CPU), then was intentionally interrupted before measurement because the owner requested the superseding `0.1.6` visual revision. Bound evidence is archived under ignored `QA/performance-failures/20260719-2136-interrupted-for-0.1.6-ui/`; it is explicitly not a pass or product failure.
+- The exact `0.1.6` soak was intentionally interrupted at 12 warm-up minutes after the owner rejected the clipped first-row rendering. The last row also captures the first native details-popover allocation (78,704 KiB RSS / 41,088 KiB physical footprint); it is neither baseline nor pass evidence. Bound evidence is archived under ignored `QA/performance-failures/20260719-2226-owner-ui-rejection-0.1.6/`.
 
 ## Outstanding external/long-running release evidence
 
@@ -40,6 +41,6 @@ Status: automated/local preview checks pass; production release evidence remains
 - Installed-app Launch at Login across approval, denial, logout, and login.
 - M1/M2 laptop and Apple Silicon no-battery desktop.
 - Charger transitions, sleep/wake, controlled network accuracy, Wi-Fi/Ethernet/VPN transitions.
-- Manual visual/accessibility matrix and seven-day soak before any owner consideration of `1.0.0`.
+- Manual VoiceOver/increased-text/constrained-menu review and the seven-day soak remain outstanding evidence; the owner nevertheless explicitly approved `1.0.0`.
 
-The application version remains in the `0.x` series. Only the owner command `pass` can authorize `1.0.0`.
+The owner explicitly issued the required `pass` command and authorized `1.0.0` on 2026-07-19.

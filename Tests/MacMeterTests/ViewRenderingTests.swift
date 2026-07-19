@@ -218,6 +218,44 @@ final class ViewRenderingTests: XCTestCase {
         }
     }
 
+    func testCycleRendersEveryEnabledMetricExactlyOnceForEverySelection() {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        fixture.settings.displayMode = .cycle
+
+        for mask in 1..<16 {
+            setMetricMask(mask, settings: fixture.settings)
+            let enabled = fixture.settings.enabledMetrics
+            let expected = enabled.map { metric -> String in
+                switch metric {
+                case .cpu: "50%"
+                case .temperature: "55°C"
+                case .network: "↑0.4 ↓3.2MB/s"
+                case .battery: "D 8.4W"
+                }
+            }
+            let rendered = enabled.indices.map { index in
+                StatusItemLabelBuilder.make(
+                    coordinator: fixture.coordinator,
+                    settings: fixture.settings,
+                    cycleIndex: index
+                ).string
+            }
+
+            XCTAssertEqual(rendered, expected, "Cycle order or coverage failed for metric mask \(mask)")
+            XCTAssertEqual(Set(rendered).count, enabled.count, "Cycle duplicated a metric for mask \(mask)")
+            XCTAssertEqual(
+                StatusItemLabelBuilder.make(
+                    coordinator: fixture.coordinator,
+                    settings: fixture.settings,
+                    cycleIndex: enabled.count
+                ).string,
+                expected[0],
+                "Cycle did not wrap after every enabled metric for mask \(mask)"
+            )
+        }
+    }
+
     func testCompactPresentationContainsEverySelectedMetricExactlyOnce() {
         for mask in 1..<16 {
             let enabled = MetricID.allCases.enumerated().compactMap { index, metric in
@@ -374,7 +412,7 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(bounds.width) + 8)
     }
 
-    func testTwoLineTypographyUsesActualStatusBarHeightAndMovesBaselinesDown() {
+    func testTypographyFitsNaturalLineBoxesBeforeButtonCentering() {
         let font = NSFont.monospacedSystemFont(ofSize: StatusItemLabelBuilder.fontSize, weight: .semibold)
         let naturalHeight = font.ascender - font.descender + font.leading
         let layout = StatusItemLabelBuilder.typography(
@@ -384,11 +422,124 @@ final class ViewRenderingTests: XCTestCase {
 
         XCTAssertGreaterThanOrEqual(layout.lineHeight, naturalHeight)
         XCTAssertLessThanOrEqual(layout.lineHeight * 2, NSStatusBar.system.thickness)
-        XCTAssertLessThan(layout.baselineOffset, 0, "Two-line text must move down to protect top-row ascenders")
-        XCTAssertGreaterThanOrEqual(layout.baselineOffset, -0.75)
+        XCTAssertEqual(layout.baselineOffset, 0)
+        XCTAssertEqual(
+            StatusItemLabelBuilder.typography(availableHeight: 16, rowCount: 2).baselineOffset,
+            0
+        )
         XCTAssertEqual(
             StatusItemLabelBuilder.typography(availableHeight: NSStatusBar.system.thickness, rowCount: 1).baselineOffset,
             0
+        )
+    }
+
+    func testRoundedStatusBackdropDoesNotClipCellDrawnTitle() {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        setMetricMask(15, settings: fixture.settings)
+        let controller = StatusItemController(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            settingsWindowController: SettingsWindowController(
+                settings: fixture.settings,
+                loginItem: LoginItemManager()
+            )
+        )
+        defer { controller.close() }
+
+        XCTAssertEqual(controller.statusButton?.wantsLayer, true)
+        XCTAssertEqual(controller.statusButton?.layer?.masksToBounds, false)
+        XCTAssertEqual(controller.renderedBackdropCornerRadius, 5)
+        let offset = try? XCTUnwrap(
+            controller.renderedTitle.attribute(.baselineOffset, at: 0, effectiveRange: nil) as? CGFloat
+        )
+        XCTAssertGreaterThan(offset ?? 0, 0, "The private status-button cell requires a measured centering correction")
+    }
+
+    func testRenderedNetworkGlyphsHavePixelClearanceFromStatusButtonEdges() throws {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        setMetricMask(15, settings: fixture.settings)
+        let controller = StatusItemController(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            settingsWindowController: SettingsWindowController(
+                settings: fixture.settings,
+                loginItem: LoginItemManager()
+            )
+        )
+        defer { controller.close() }
+
+        let button = try XCTUnwrap(controller.statusButton)
+        button.displayIfNeeded()
+        let bitmap = try XCTUnwrap(button.bitmapImageRepForCachingDisplay(in: button.bounds))
+        button.cacheDisplay(in: button.bounds, to: bitmap)
+
+        var brightPixelRows: [Int] = []
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if max(color.redComponent, color.greenComponent, color.blueComponent) > 0.55,
+                   color.alphaComponent > 0.5 {
+                    brightPixelRows.append(y)
+                }
+            }
+        }
+
+        let minimumRow = try XCTUnwrap(brightPixelRows.min(), "Expected rendered metric glyph pixels")
+        let maximumRow = try XCTUnwrap(brightPixelRows.max(), "Expected rendered metric glyph pixels")
+        let firstMargin = minimumRow
+        let oppositeMargin = bitmap.pixelsHigh - 1 - maximumRow
+        XCTAssertGreaterThan(firstMargin, 0, "Metric glyphs touch one status-button edge")
+        XCTAssertGreaterThan(oppositeMargin, 0, "Metric glyphs touch the opposite status-button edge")
+        XCTAssertLessThanOrEqual(
+            abs(firstMargin - oppositeMargin),
+            1,
+            "The rendered two-line ink must be vertically centered to within one physical pixel"
+        )
+    }
+
+    func testRenderedCycleGlyphsAreVerticallyCentered() throws {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        setMetricMask(15, settings: fixture.settings)
+        fixture.settings.displayMode = .cycle
+        let controller = StatusItemController(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            settingsWindowController: SettingsWindowController(
+                settings: fixture.settings,
+                loginItem: LoginItemManager()
+            )
+        )
+        defer { controller.close() }
+
+        let button = try XCTUnwrap(controller.statusButton)
+        button.displayIfNeeded()
+        let bitmap = try XCTUnwrap(button.bitmapImageRepForCachingDisplay(in: button.bounds))
+        button.cacheDisplay(in: button.bounds, to: bitmap)
+
+        var brightPixelRows: [Int] = []
+        for y in 0..<bitmap.pixelsHigh {
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if max(color.redComponent, color.greenComponent, color.blueComponent) > 0.55,
+                   color.alphaComponent > 0.5 {
+                    brightPixelRows.append(y)
+                }
+            }
+        }
+
+        let minimumRow = try XCTUnwrap(brightPixelRows.min(), "Expected rendered Cycle glyph pixels")
+        let maximumRow = try XCTUnwrap(brightPixelRows.max(), "Expected rendered Cycle glyph pixels")
+        let firstMargin = minimumRow
+        let oppositeMargin = bitmap.pixelsHigh - 1 - maximumRow
+        XCTAssertGreaterThan(firstMargin, 0)
+        XCTAssertGreaterThan(oppositeMargin, 0)
+        XCTAssertLessThanOrEqual(
+            abs(firstMargin - oppositeMargin),
+            1,
+            "The rendered one-line Cycle ink must be vertically centered to within one physical pixel"
         )
     }
 

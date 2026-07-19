@@ -24,12 +24,36 @@ enum StatusItemLabelBuilder {
         let quarterPointRoundedHeight = ceil(naturalLineHeight * 4) / 4
         let maximumLineHeight = max(1, availableHeight / CGFloat(max(1, rowCount)))
         let lineHeight = min(quarterPointRoundedHeight, maximumLineHeight)
+        return Typography(lineHeight: lineHeight, baselineOffset: 0)
+    }
 
-        // NSButtonCell places a two-line attributed title slightly above its
-        // visual center. Keep the natural font box, then use the remaining
-        // status-bar height (capped at 0.75 pt) to nudge both baselines down.
-        let baselineOffset: CGFloat = rowCount > 1 ? -min(0.75, max(0, availableHeight - lineHeight * CGFloat(rowCount))) : 0
-        return Typography(lineHeight: lineHeight, baselineOffset: baselineOffset)
+    @MainActor
+    static func verticallyCentered(
+        _ title: NSAttributedString,
+        in button: NSStatusBarButton,
+        backingScale: CGFloat
+    ) -> NSAttributedString {
+        guard title.length > 0, let cell = button.cell else { return title }
+
+        // NSStatusBarButton's private cell does not vertically center a
+        // multiline attributed title in its button bounds. Measure the cell's
+        // actual title rectangle and translate it to the geometric center.
+        // A multiline title receives one physical-pixel correction so its ink
+        // lands symmetrically after AppKit rasterizes half-point font metrics.
+        let titleRect = cell.titleRect(forBounds: button.bounds)
+        let centeredOrigin = (button.bounds.height - titleRect.height) / 2
+        let pixelCorrection = title.string.contains("\n")
+            ? 1 / max(1, backingScale)
+            : 0
+        let baselineOffset = titleRect.minY - centeredOrigin + pixelCorrection
+
+        let centered = NSMutableAttributedString(attributedString: title)
+        centered.addAttribute(
+            .baselineOffset,
+            value: baselineOffset,
+            range: NSRange(location: 0, length: centered.length)
+        )
+        return centered
     }
 
     @MainActor
@@ -41,7 +65,10 @@ enum StatusItemLabelBuilder {
     ) -> NSAttributedString {
         let enabled = settings.enabledMetrics
         guard !enabled.isEmpty else {
-            let layout = typography(availableHeight: availableHeight, rowCount: 1)
+            let layout = typography(
+                availableHeight: availableHeight,
+                rowCount: 1
+            )
             return attributed("◉", color: Palette.primary, typography: layout)
         }
 
@@ -51,7 +78,10 @@ enum StatusItemLabelBuilder {
         } else {
             rows = MenuBarPresentation.rows(for: enabled)
         }
-        let layout = typography(availableHeight: availableHeight, rowCount: rows.count)
+        let layout = typography(
+            availableHeight: availableHeight,
+            rowCount: rows.count
+        )
 
         let result = NSMutableAttributedString()
         for (rowIndex, row) in rows.enumerated() {
@@ -256,7 +286,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.wantsLayer = true
         button.layer?.backgroundColor = StatusItemLabelBuilder.Palette.backdrop.cgColor
         button.layer?.cornerRadius = 5
-        button.layer?.masksToBounds = true
+        // A status-button cell intentionally draws slightly outside its title
+        // rect. Clipping the layer cuts off the top row; cornerRadius already
+        // rounds the layer background without masking its title contents.
+        button.layer?.masksToBounds = false
     }
 
     private func scheduleRefresh(settingsChanged: Bool) {
@@ -315,12 +348,20 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 ? button.bounds.height
                 : NSStatusBar.system.thickness
         )
-        button.attributedTitle = attributedTitle
         let bounds = attributedTitle.boundingRect(
             with: NSSize(width: 1_000, height: NSStatusBar.system.thickness),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
         statusItem.length = max(18, ceil(bounds.width) + 8)
+        button.attributedTitle = attributedTitle
+        button.layoutSubtreeIfNeeded()
+        button.attributedTitle = StatusItemLabelBuilder.verticallyCentered(
+            attributedTitle,
+            in: button,
+            backingScale: button.window?.backingScaleFactor
+                ?? NSScreen.main?.backingScaleFactor
+                ?? 1
+        )
         button.setAccessibilityLabel(StatusItemLabelBuilder.accessibilityLabel(
             coordinator: coordinator,
             settings: settings,
