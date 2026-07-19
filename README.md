@@ -17,7 +17,7 @@ xcodebuild -project MacMeter.xcodeproj -scheme MacMeter -configuration Release \
 
 The unsigned local app is produced at `build/DerivedData/Build/Products/Release/MacMeter.app`.
 
-For a production DMG, set `MACMETER_SIGN_IDENTITY` and a `notarytool` keychain profile in `MACMETER_NOTARY_PROFILE`, then run `bash Scripts/package-release.sh`. Notarization and stapling are mandatory. A future owner-approved `1.0.0` also requires `MACMETER_OWNER_APPROVAL=pass`; the current source remains `0.1.0` until the owner explicitly gives that command.
+For a production DMG, set `MACMETER_SIGN_IDENTITY` and a `notarytool` keychain profile in `MACMETER_NOTARY_PROFILE`, then run `bash Scripts/package-release.sh`. Notarization and stapling are mandatory. A future owner-approved `1.0.0` also requires `MACMETER_OWNER_APPROVAL=pass`; development releases remain in the `0.x` series until the owner explicitly gives that command.
 
 ## Test
 

@@ -1,4 +1,4 @@
-# MacMeter 0.1.0 requirement traceability
+# MacMeter 0.1.1 requirement traceability
 
 Status meanings: **Verified** has current automated or physical evidence; **Partial** has implementation evidence but incomplete acceptance evidence; **Pending external** requires credentials, another machine, a physical transition, or elapsed soak time.
 
@@ -36,10 +36,10 @@ Status meanings: **Verified** has current automated or physical evidence; **Part
 | PERF-02 | Seven-day soak before 1.0 consideration | Pending elapsed run | Not started; not required to change preview version |
 | DIST-01 | Hardened, Developer ID-signed, notarized/stapled DMG; clean install | Pending external | Enforced packaging script exists; requires owner signing identity and notary profile |
 | PRIV-01 | No telemetry, outbound requests, or listening sockets | Verified | Source/framework gate plus `Scripts/runtime-privacy-evidence.sh`; every QA Release build generates ignored `QA/latest-runtime-privacy.json`, bound to commit/dirty state, artifact SHA-256, version/build, hardware, timestamp, observer implementation/tool, and a fail-closed 10-second exact-PID socket observation with all providers enabled at the default two-second refresh |
-| VER-01 | Start/remain 0.x; only owner command `pass` authorizes 1.0.0 | Verified | Xcode single version authority and script policy tests; current artifact `0.1.0 (1)` |
+| VER-01 | Start/remain 0.x; only owner command `pass` authorizes 1.0.0 | Verified | Xcode single version authority and script policy tests; current artifact `0.1.1 (1)` |
 | HW-01 | M1/M2 laptop, M4 Max, no-battery desktop acceptance matrix | Partial | M4 Max automated/live evidence complete; other two machines unavailable in current workspace |
 | PM-01 | Development → QA → PM rejection/fix loop | Verified for preview | Independent QA and PM approved the prior preview after a PM rejection and regression loop; rerun required after subsequent changes |
 
 ## Current completion boundary
 
-All implementation requirements and the locally automatable M4 checks have evidence. Full production readiness remains unproven until the pending external and elapsed-time rows are completed. The app must remain `0.1.0` until the owner explicitly says **pass**.
+All implementation requirements and the locally automatable M4 checks have evidence. Full production readiness remains unproven until the pending external and elapsed-time rows are completed. The app must remain in the `0.x` series until the owner explicitly says **pass**.

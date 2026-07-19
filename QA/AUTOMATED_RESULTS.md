@@ -1,7 +1,7 @@
 # MacMeter automated QA evidence
 
 Date: 2026-07-19  
-Candidate: 0.1.0 (build 1)  
+Candidate: 0.1.1 (build 1)
 Hardware: Apple M4 Max, 16 cores (12 Performance, 4 Efficiency)  
 Status: automated/local preview checks pass; production release evidence remains incomplete
 
@@ -15,7 +15,7 @@ Status: automated/local preview checks pass; production release evidence remains
 - Deterministic raw-provider fixtures cover active `en*` selection while excluding down, non-running, loopback, bridge, and tunnel devices; network source failure; missing battery/property telemetry; every inconsistent battery direction/state; and charge/drain/idle values.
 - Coordinator: disabled-provider polling, fresh rate baselines, immediate enable-sample timestamps, unavailable enable isolation, provider failure isolation, injected clock, exact interval restart, and cancellation.
 - Login item service: injected enable, disable, approval-required, not-found, and error paths.
-- Swift 6 Release Xcode build; arm64; bundle `com.karhoong.MacMeter`; `LSUIElement=true`; `0.1.0 (1)`.
+- Swift 6 Release Xcode build; arm64; bundle `com.karhoong.MacMeter`; `LSUIElement=true`; `0.1.1 (1)`.
 - Static outbound-network source and linked-framework gates. Every QA Release candidate also undergoes a 10-second, one-second-cadence `lsof` observation of its exact child PID with all four providers forced on at the default two-second refresh; commit/dirty state, binary SHA-256, version/build, hardware, timestamps, configuration, method, observer provenance, liveness, and zero outbound/listening sockets are recorded in ignored `QA/latest-runtime-privacy.json` and revalidated fail-closed.
 - Live M4 timing gates enforce refresh p95 error ≤200 ms, AppKit-host paint p95 <250 ms with a non-nil cached bitmap, and five-second cycle p95 error ≤200 ms. Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
 - Render matrix: Compact/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text. Every Cycle page fits a 136-point intrinsic-width budget. Dedicated semantic regressions prove all 15 non-empty Compact selections contain each enabled metric exactly once and lock the all-four string to `↑0.0↓0.5MB/s | 50% | 80°C | D 12W`, including the Fahrenheit variant. A persistent-host regression applies a one-point width proposal to all selections and proves none compress, all stay within 180 points wide and 24 points tall, and the all-four selection remains on a status-bar-safe single row.
@@ -35,4 +35,4 @@ Status: automated/local preview checks pass; production release evidence remains
 - Charger transitions, sleep/wake, controlled network accuracy, Wi-Fi/Ethernet/VPN transitions.
 - Manual visual/accessibility matrix and seven-day soak before any owner consideration of `1.0.0`.
 
-The application version remains `0.1.0`. Only the owner command `pass` can authorize `1.0.0`.
+The application version remains in the `0.x` series. Only the owner command `pass` can authorize `1.0.0`.
