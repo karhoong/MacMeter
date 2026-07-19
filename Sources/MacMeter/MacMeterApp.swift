@@ -52,32 +52,25 @@ final class SettingsWindowController {
 
 @main
 struct MacMeterApp: App {
-    @StateObject private var settings: SettingsStore
-    @StateObject private var coordinator: MetricsCoordinator
-    @StateObject private var loginItem: LoginItemManager
-    private let settingsWindowController: SettingsWindowController
+    private let statusItemController: StatusItemController
 
     @MainActor
     init() {
         let settings = SettingsStore()
         let loginItem = LoginItemManager()
-        _settings = StateObject(wrappedValue: settings)
-        _coordinator = StateObject(wrappedValue: MetricsCoordinator(settings: settings))
-        _loginItem = StateObject(wrappedValue: loginItem)
-        settingsWindowController = SettingsWindowController(settings: settings, loginItem: loginItem)
         NSApplication.shared.setActivationPolicy(.accessory)
+        let coordinator = MetricsCoordinator(settings: settings)
+        let settingsWindowController = SettingsWindowController(settings: settings, loginItem: loginItem)
+        statusItemController = StatusItemController(
+            coordinator: coordinator,
+            settings: settings,
+            settingsWindowController: settingsWindowController
+        )
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MeterPopoverView(
-                coordinator: coordinator,
-                settings: settings,
-                openSettings: settingsWindowController.show
-            )
-        } label: {
-            MenuBarLabelView(coordinator: coordinator, settings: settings)
+        Settings {
+            EmptyView()
         }
-        .menuBarExtraStyle(.window)
     }
 }

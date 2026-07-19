@@ -269,6 +269,53 @@ final class ViewRenderingTests: XCTestCase {
         }
     }
 
+    func testNativeStatusLabelUsesEightPointFontAndEverySelectedMetric() throws {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        setMetricMask(15, settings: fixture.settings)
+
+        let label = StatusItemLabelBuilder.make(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            cycleIndex: 0
+        )
+        XCTAssertEqual(label.string, "↑0.4↓3.2MB/s | 50% | 55°C | D 8.4W")
+        label.enumerateAttribute(.font, in: NSRange(location: 0, length: label.length)) { value, _, _ in
+            XCTAssertEqual((value as? NSFont)?.pointSize, StatusItemLabelBuilder.fontSize)
+        }
+    }
+
+    func testNativeStatusLabelBatteryColorsAreRedGreenAndBlue() throws {
+        let cases: [(BatteryPowerReading, NSColor)] = [
+            (BatteryPowerReading(watts: 8.4, direction: .draining), .systemRed),
+            (BatteryPowerReading(watts: 30, direction: .charging), .systemGreen),
+            (BatteryPowerReading(watts: 0, direction: .idle), .systemBlue)
+        ]
+
+        for (reading, expectedColor) in cases {
+            let suite = "MacMeterNativeBatteryColorTests.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            defer { defaults.removePersistentDomain(forName: suite) }
+            let settings = SettingsStore(defaults: defaults)
+            setMetricMask(8, settings: settings)
+            let coordinator = MetricsCoordinator(
+                settings: settings,
+                cpuProvider: FakeCPUProvider(),
+                temperatureProvider: FakeTemperatureProvider(),
+                networkProvider: FakeNetworkProvider(),
+                batteryProvider: StaticBatteryProvider(reading: reading),
+                startAutomatically: false
+            )
+            coordinator.sampleNow()
+            let label = StatusItemLabelBuilder.make(
+                coordinator: coordinator,
+                settings: settings,
+                cycleIndex: 0
+            )
+            XCTAssertEqual(label.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor, expectedColor)
+        }
+    }
+
     private func render<V: View>(_ view: V) -> NSImage? {
         let renderer = ImageRenderer(content: view.padding(8).frame(minWidth: 120, minHeight: 32))
         renderer.scale = 2

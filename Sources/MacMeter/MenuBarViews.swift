@@ -31,8 +31,7 @@ enum MenuBarPresentation {
         guard !enabledMetrics.isEmpty else { return [] }
         if enabledMetrics.count == MetricID.allCases.count,
            MetricID.allCases.allSatisfy(enabledMetrics.contains) {
-            // The real MenuBarExtra status item clips vertically stacked label
-            // content, so all values must share one compact status-bar row.
+            // The status bar has a fixed height, so all values share one compact row.
             return [[.network, .cpu, .temperature, .battery]]
         }
         return [enabledMetrics]

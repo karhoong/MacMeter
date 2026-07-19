@@ -1,0 +1,238 @@
+import AppKit
+import Combine
+import SwiftUI
+
+enum StatusItemLabelBuilder {
+    static let fontSize: CGFloat = 8
+
+    @MainActor
+    static func make(
+        coordinator: MetricsCoordinator,
+        settings: SettingsStore,
+        cycleIndex: Int
+    ) -> NSAttributedString {
+        let enabled = settings.enabledMetrics
+        guard !enabled.isEmpty else {
+            return attributed("◉", color: .labelColor)
+        }
+
+        let metrics: [MetricID]
+        if settings.displayMode == .cycle {
+            metrics = [enabled[cycleIndex % enabled.count]]
+        } else {
+            metrics = MenuBarPresentation.rows(for: enabled).flatMap { $0 }
+        }
+
+        let result = NSMutableAttributedString()
+        for (index, metric) in metrics.enumerated() {
+            if index > 0 {
+                result.append(attributed(" | ", color: .secondaryLabelColor))
+            }
+            result.append(segment(metric, coordinator: coordinator, settings: settings))
+        }
+        return result
+    }
+
+    @MainActor
+    static func accessibilityLabel(
+        coordinator: MetricsCoordinator,
+        settings: SettingsStore,
+        cycleIndex: Int
+    ) -> String {
+        let enabled = settings.enabledMetrics
+        guard !enabled.isEmpty else { return "MacMeter. No metrics enabled" }
+        let metrics = settings.displayMode == .cycle
+            ? [enabled[cycleIndex % enabled.count]]
+            : MenuBarPresentation.rows(for: enabled).flatMap { $0 }
+        return metrics.map { metric in
+            switch metric {
+            case .cpu:
+                guard let reading = coordinator.cpu.value else { return "CPU unavailable" }
+                let value = settings.cpuScale == .normalized ? reading.normalized : reading.summed
+                return MetricAccessibility.cpu(value)
+            case .temperature:
+                guard let reading = coordinator.temperature.value else { return "SoC temperature unavailable" }
+                return MetricAccessibility.temperature(reading.hottestCelsius, unit: settings.temperatureUnit)
+            case .network:
+                guard let reading = coordinator.network.value else { return "Network speed unavailable" }
+                return MetricAccessibility.network(reading, unit: settings.networkUnit)
+            case .battery:
+                guard let reading = coordinator.battery.value else { return "Battery power unavailable" }
+                return MetricAccessibility.battery(reading)
+            }
+        }.joined(separator: ", ")
+    }
+
+    @MainActor
+    private static func segment(
+        _ metric: MetricID,
+        coordinator: MetricsCoordinator,
+        settings: SettingsStore
+    ) -> NSAttributedString {
+        switch metric {
+        case .cpu:
+            guard let reading = coordinator.cpu.value else { return attributed("—", color: .secondaryLabelColor) }
+            return attributed(MenuBarPresentation.cpu(reading, scale: settings.cpuScale), color: .labelColor)
+        case .temperature:
+            guard let reading = coordinator.temperature.value else { return attributed("—", color: .secondaryLabelColor) }
+            return attributed(MenuBarPresentation.temperature(reading, unit: settings.temperatureUnit), color: .labelColor)
+        case .network:
+            guard let reading = coordinator.network.value else {
+                return attributed("↑—↓—\(settings.networkUnit.menuLabel)", color: .secondaryLabelColor)
+            }
+            return attributed(MenuBarPresentation.network(reading, unit: settings.networkUnit), color: .labelColor)
+        case .battery:
+            guard let reading = coordinator.battery.value else { return attributed("—", color: .secondaryLabelColor) }
+            let color: NSColor
+            switch reading.direction.colorRole {
+            case .charging: color = .systemGreen
+            case .draining: color = .systemRed
+            case .idle: color = .systemBlue
+            }
+            return attributed(MenuBarPresentation.battery(reading), color: color)
+        }
+    }
+
+    private static func attributed(_ text: String, color: NSColor) -> NSAttributedString {
+        NSAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .medium),
+                .foregroundColor: color
+            ]
+        )
+    }
+}
+
+private final class StatusItemTextField: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override var allowsVibrancy: Bool { false }
+}
+
+@MainActor
+final class StatusItemController: NSObject {
+    private let coordinator: MetricsCoordinator
+    private let settings: SettingsStore
+    private let settingsWindowController: SettingsWindowController
+    private let statusItem: NSStatusItem
+    private let label = StatusItemTextField(frame: .zero)
+    private let popover = NSPopover()
+    private var cancellables = Set<AnyCancellable>()
+    private var cycleTask: Task<Void, Never>?
+    private var cycleIndex = 0
+
+    init(
+        coordinator: MetricsCoordinator,
+        settings: SettingsStore,
+        settingsWindowController: SettingsWindowController
+    ) {
+        self.coordinator = coordinator
+        self.settings = settings
+        self.settingsWindowController = settingsWindowController
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        super.init()
+
+        configureStatusItem()
+        popover.behavior = .transient
+        popover.animates = true
+        popover.contentSize = NSSize(width: 390, height: 520)
+        popover.contentViewController = NSHostingController(rootView: MeterPopoverView(
+            coordinator: coordinator,
+            settings: settings,
+            openSettings: { [weak self] in
+                self?.popover.performClose(nil)
+                self?.settingsWindowController.show()
+            }
+        ))
+
+        coordinator.objectWillChange.sink { [weak self] in
+            Task { @MainActor in
+                await Task.yield()
+                self?.refresh()
+            }
+        }.store(in: &cancellables)
+        settings.objectWillChange.sink { [weak self] in
+            Task { @MainActor in
+                await Task.yield()
+                self?.settingsChanged()
+            }
+        }.store(in: &cancellables)
+
+        settingsChanged()
+    }
+
+    private func configureStatusItem() {
+        guard let button = statusItem.button else { return }
+        button.title = ""
+        button.image = nil
+        button.target = self
+        button.action = #selector(togglePopover)
+        button.sendAction(on: [.leftMouseUp])
+
+        label.isBezeled = false
+        label.isBordered = false
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.maximumNumberOfLines = 1
+        label.lineBreakMode = .byClipping
+        label.translatesAutoresizingMaskIntoConstraints = false
+        button.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: button.leadingAnchor, constant: 4),
+            label.centerYAnchor.constraint(equalTo: button.centerYAnchor)
+        ])
+    }
+
+    private func settingsChanged() {
+        cycleIndex = 0
+        updateCycleTask()
+        refresh()
+    }
+
+    private func updateCycleTask() {
+        cycleTask?.cancel()
+        cycleTask = nil
+        guard settings.displayMode == .cycle, !settings.enabledMetrics.isEmpty else { return }
+        cycleTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(5))
+                } catch {
+                    return
+                }
+                guard let self, !Task.isCancelled else { return }
+                cycleIndex = CycleSequence.nextIndex(
+                    current: cycleIndex,
+                    enabledCount: settings.enabledMetrics.count
+                )
+                refresh()
+            }
+        }
+    }
+
+    private func refresh() {
+        label.attributedStringValue = StatusItemLabelBuilder.make(
+            coordinator: coordinator,
+            settings: settings,
+            cycleIndex: cycleIndex
+        )
+        label.sizeToFit()
+        statusItem.length = max(18, ceil(label.fittingSize.width) + 8)
+        statusItem.button?.setAccessibilityLabel(StatusItemLabelBuilder.accessibilityLabel(
+            coordinator: coordinator,
+            settings: settings,
+            cycleIndex: cycleIndex
+        ))
+    }
+
+    @objc private func togglePopover() {
+        guard let button = statusItem.button else { return }
+        if popover.isShown {
+            popover.performClose(nil)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+}

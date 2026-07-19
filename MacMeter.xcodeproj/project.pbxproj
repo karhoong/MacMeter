@@ -16,6 +16,7 @@
 		A10000000000000000000008 /* MenuBarViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000008 /* MenuBarViews.swift */; };
 		A10000000000000000000009 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000009 /* SettingsView.swift */; };
 		A1000000000000000000000A /* SensorBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000A /* SensorBridge.m */; };
+		A1000000000000000000000E /* StatusItemController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* StatusItemController.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -32,6 +33,7 @@
 		A2000000000000000000000B /* MacMeterSensors.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MacMeterSensors.h; sourceTree = "<group>"; };
 		A2000000000000000000000C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A2000000000000000000000D /* MacMeter.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MacMeter.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A2000000000000000000000E /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -74,6 +76,7 @@
 				A20000000000000000000007,
 				A20000000000000000000008,
 				A20000000000000000000009,
+				A2000000000000000000000E,
 			);
 			path = MacMeter;
 			sourceTree = "<group>";
@@ -171,6 +174,7 @@
 				A10000000000000000000008,
 				A10000000000000000000009,
 				A1000000000000000000000A,
+				A1000000000000000000000E,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -207,7 +211,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.1.2;
 				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
 				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -227,7 +231,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 0.1.1;
+				MARKETING_VERSION = 0.1.2;
 				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
 				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
