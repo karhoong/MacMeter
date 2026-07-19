@@ -7,8 +7,8 @@ Status: automated/local preview checks pass; production release evidence remains
 
 ## Passing
 
-- `bash Scripts/qa.sh`: 71 XCTest cases, 0 failures, plus version, timing-evidence, raw-performance-evidence, and runtime-privacy mutation suites.
-- Production Swift line coverage: 1,704/1,874 (90.93%).
+- `bash Scripts/qa.sh`: 72 XCTest cases, 0 failures, plus version, timing-evidence, raw-performance-evidence, and runtime-privacy mutation suites.
+- Production Swift line coverage: 1,734/1,886 (91.94%).
 - All 33 declared metric calculation/conversion decision paths are exercised by an executable set-equality contract, including CPU counter reset/zero/kind paths, every network rejection, unit, and compact-decimal mode, all battery directions, Celsius/Fahrenheit conversion, temperature bounds, and formatting paths. Battery precision fixtures include nonzero currents from ±1 mA through ±50 mA.
 - Live providers: CPU/topology, physical-interface network rates, battery power, and SoC temperature. The M4 Max live test now requires a valid temperature through the read-only AppleSMC fallback and a cached refresh below 250 ms.
 - SoC classifier fixtures: hottest valid exact `SOC MTR Temp`; hottest valid AppleSMC CPU/GPU die key (`Tp`/`Te`/`Tg`/`TCMz`); duplicate names; rejected `PMU tdie`, battery, SSD, and chassis substitution; invalid values; unrelated sensors; and empty input.
@@ -20,6 +20,7 @@ Status: automated/local preview checks pass; production release evidence remains
 - Live M4 timing gates enforce refresh p95 error ≤200 ms, AppKit-host paint p95 <250 ms with a non-nil cached bitmap, and five-second cycle p95 error ≤200 ms. Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
 - Render matrix: Compact/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text. Every Cycle page fits a 136-point intrinsic-width budget. The production label is a native `NSStatusItem` attributed string rather than `MenuBarExtra`, with executable assertions that every segment uses an 8-point monospaced font and battery drain/charge/idle use native system red/green/blue. Dedicated semantic regressions prove all 15 non-empty Compact selections contain each enabled metric exactly once and lock the all-four string to `↑0.0↓0.5MB/s | 50% | 80°C | D 12W`, including the Fahrenheit variant.
 - The native status title is applied directly to `NSStatusBarButton.attributedTitle` with zero custom status-button subviews. The popover host is created only when first opened. A live `0.1.3` preview remained responsive while idling at 0.0% sampled CPU and 47,920 KiB RSS; this is short-run evidence, not a substitute for the required 24-hour run.
+- The status-button interaction regression performs a real `NSStatusBarButton.performClick`, proves lazy popover content is prepared and presentation is requested, then exercises the shared Settings action and verifies popover dismissal plus a visible `MacMeter.Settings` window.
 
 ## Performance evidence
 

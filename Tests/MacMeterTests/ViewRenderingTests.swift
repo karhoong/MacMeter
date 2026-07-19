@@ -340,6 +340,46 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(controller.renderedTitle.size().width) + 8)
     }
 
+    func testStatusButtonOpensLazyPopoverAndSettingsActionClosesIt() {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        let settingsWindowController = SettingsWindowController(
+            settings: fixture.settings,
+            loginItem: LoginItemManager(),
+            activateApplication: {}
+        )
+        var didPresentPopover = false
+        var didDismissPopover = false
+        let controller = StatusItemController(
+            coordinator: fixture.coordinator,
+            settings: fixture.settings,
+            settingsWindowController: settingsWindowController,
+            presentPopover: { popover, button in
+                XCTAssertNotNil(popover.contentViewController)
+                XCTAssertNotNil(button.window)
+                didPresentPopover = true
+            },
+            dismissPopover: { _ in
+                didDismissPopover = true
+            }
+        )
+        defer {
+            controller.close()
+            settingsWindowController.close()
+        }
+
+        XCTAssertFalse(controller.isPopoverPrepared)
+        controller.statusButton?.performClick(nil)
+        XCTAssertTrue(controller.isPopoverPrepared)
+        XCTAssertTrue(didPresentPopover)
+        XCTAssertFalse(didDismissPopover)
+
+        controller.openSettings()
+        XCTAssertTrue(didDismissPopover)
+        XCTAssertEqual(settingsWindowController.window?.identifier?.rawValue, "MacMeter.Settings")
+        XCTAssertTrue(settingsWindowController.window?.isVisible == true)
+    }
+
     private func render<V: View>(_ view: V) -> NSImage? {
         let renderer = ImageRenderer(content: view.padding(8).frame(minWidth: 120, minHeight: 32))
         renderer.scale = 2

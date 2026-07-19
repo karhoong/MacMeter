@@ -111,6 +111,8 @@ final class StatusItemController: NSObject {
     private let settingsWindowController: SettingsWindowController
     private let statusItem: NSStatusItem
     private let popover = NSPopover()
+    private let presentPopover: (NSPopover, NSStatusBarButton) -> Void
+    private let dismissPopover: (NSPopover) -> Void
     private var cancellables = Set<AnyCancellable>()
     private var cycleTask: Task<Void, Never>?
     private var cycleIndex = 0
@@ -118,15 +120,25 @@ final class StatusItemController: NSObject {
     var renderedTitle: NSAttributedString { statusItem.button?.attributedTitle ?? NSAttributedString() }
     var statusButtonSubviewCount: Int { statusItem.button?.subviews.count ?? 0 }
     var renderedLength: CGFloat { statusItem.length }
+    var statusButton: NSStatusBarButton? { statusItem.button }
+    var isPopoverPrepared: Bool { popover.contentViewController != nil }
 
     init(
         coordinator: MetricsCoordinator,
         settings: SettingsStore,
-        settingsWindowController: SettingsWindowController
+        settingsWindowController: SettingsWindowController,
+        presentPopover: @escaping (NSPopover, NSStatusBarButton) -> Void = { popover, button in
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        },
+        dismissPopover: @escaping (NSPopover) -> Void = { popover in
+            popover.performClose(nil)
+        }
     ) {
         self.coordinator = coordinator
         self.settings = settings
         self.settingsWindowController = settingsWindowController
+        self.presentPopover = presentPopover
+        self.dismissPopover = dismissPopover
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -154,7 +166,7 @@ final class StatusItemController: NSObject {
     func close() {
         cycleTask?.cancel()
         cycleTask = nil
-        popover.performClose(nil)
+        dismissPopover(popover)
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
@@ -214,10 +226,10 @@ final class StatusItemController: NSObject {
     @objc private func togglePopover() {
         guard let button = statusItem.button else { return }
         if popover.isShown {
-            popover.performClose(nil)
+            dismissPopover(popover)
         } else {
             preparePopoverIfNeeded()
-            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            presentPopover(popover, button)
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -228,9 +240,13 @@ final class StatusItemController: NSObject {
             coordinator: coordinator,
             settings: settings,
             openSettings: { [weak self] in
-                self?.popover.performClose(nil)
-                self?.settingsWindowController.show()
+                self?.openSettings()
             }
         ))
+    }
+
+    func openSettings() {
+        dismissPopover(popover)
+        settingsWindowController.show()
     }
 }
