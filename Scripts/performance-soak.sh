@@ -61,6 +61,8 @@ failure_kind="unexpected_error"
 failure_reason="unexpected error"
 baseline_rss=""
 maximum_rss=0
+baseline_physical_footprint=""
+maximum_physical_footprint=0
 sample_count=0
 average_cpu=""
 cpu_p95=""
@@ -71,6 +73,7 @@ measurement_wall_start=""
 latest_cpu_ns=""
 latest_wall_ns=""
 latest_rss=""
+latest_physical_footprint=""
 
 write_base_evidence() {
   local status="$1"
@@ -87,6 +90,8 @@ write_base_evidence() {
     --arg version "$version" \
     --arg build "$build" \
     --arg cpuMeasurementMethod "proc_pid_rusage cumulative user+system CPU nanoseconds divided by CLOCK_MONOTONIC wall-time deltas" \
+    --arg rssMeasurementMethod "/bin/ps resident set size in KiB; active release gate" \
+    --arg physicalFootprintMeasurementMethod "proc_pid_rusage RUSAGE_INFO_V4 ri_phys_footprint bytes floored after division by 1024; observational until policy approval" \
     --argjson dirtyWorktree "$dirty" \
     --argjson pid "$pid" \
     --argjson warmupSeconds "$warmup_seconds" \
@@ -97,7 +102,7 @@ write_base_evidence() {
     --argjson growthLimitKiB "$growth_limit_kib" \
     --argjson averageCPUPercentLimit "$cpu_average_limit" \
     --argjson p95CPUPercentLimit "$cpu_p95_limit" \
-    '{status:$status, commit:$commit, startedAt:$startedAt, hardware:$hardware,
+    '{schemaVersion:2, status:$status, commit:$commit, startedAt:$startedAt, hardware:$hardware,
       binarySHA256:$binarySHA256, metricsSourceSHA256:$metricsSourceSHA256,
       metricsBinarySHA256:$metricsBinarySHA256, metricsCompiler:$metricsCompiler,
       sleepPreventionMethod:$sleepPreventionMethod,
@@ -105,6 +110,8 @@ write_base_evidence() {
       warmupSeconds:$warmupSeconds, soakSeconds:$soakSeconds,
       sampleSeconds:$sampleSeconds, sampleCadenceSeconds:$sampleCadenceSeconds,
       cpuMeasurementMethod:$cpuMeasurementMethod,
+      rssMeasurementMethod:$rssMeasurementMethod,
+      physicalFootprintMeasurementMethod:$physicalFootprintMeasurementMethod,
       thresholds:{rssLimitKiB:$rssLimitKiB, growthLimitKiB:$growthLimitKiB,
         averageCPUPercentLimit:$averageCPUPercentLimit,
         p95CPUPercentLimit:$p95CPUPercentLimit}}' >"$evidence"
@@ -118,11 +125,17 @@ add_results() {
     --argjson baselineRSSKiB "$baseline_rss" \
     --argjson maximumRSSKiB "$maximum_rss" \
     --argjson growthKiB "$growth" \
+    --argjson baselinePhysicalFootprintKiB "$baseline_physical_footprint" \
+    --argjson maximumPhysicalFootprintKiB "$maximum_physical_footprint" \
+    --argjson physicalFootprintGrowthKiB "$((maximum_physical_footprint - baseline_physical_footprint))" \
     --argjson averageCPUPercent "$average_cpu" \
     --argjson p95CPUPercent "$cpu_p95" \
     --argjson measurementDurationSeconds "$measurement_duration_seconds" \
     '. + {($field):{samples:$samples, baselineRSSKiB:$baselineRSSKiB,
       maximumRSSKiB:$maximumRSSKiB, growthKiB:$growthKiB,
+      baselinePhysicalFootprintKiB:$baselinePhysicalFootprintKiB,
+      maximumPhysicalFootprintKiB:$maximumPhysicalFootprintKiB,
+      physicalFootprintGrowthKiB:$physicalFootprintGrowthKiB,
       averageCPUPercent:$averageCPUPercent, p95CPUPercent:$p95CPUPercent,
       measurementDurationSeconds:$measurementDurationSeconds}}' \
     "$evidence" >"$evidence.tmp"
@@ -138,7 +151,7 @@ add_raw_csv_binding() {
     --arg csvFileName "$csv_file_name" \
     --arg csvSHA256 "$csv_sha256" \
     --argjson csvByteCount "$csv_byte_count" \
-    '. + {rawCSV:{formatVersion:1, fileName:$csvFileName,
+    '. + {rawCSV:{formatVersion:2, fileName:$csvFileName,
       sha256:$csvSHA256, byteCount:$csvByteCount}}' \
     "$evidence" >"$evidence.tmp"
   mv "$evidence.tmp" "$evidence"
@@ -160,14 +173,20 @@ write_completed_evidence() {
     --argjson baselineRSSKiB "$baseline_rss" \
     --argjson maximumRSSKiB "$maximum_rss" \
     --argjson growthKiB "$growth" \
+    --argjson baselinePhysicalFootprintKiB "$baseline_physical_footprint" \
+    --argjson maximumPhysicalFootprintKiB "$maximum_physical_footprint" \
+    --argjson physicalFootprintGrowthKiB "$((maximum_physical_footprint - baseline_physical_footprint))" \
     --argjson averageCPUPercent "$average_cpu" \
     --argjson p95CPUPercent "$cpu_p95" \
     --argjson measurementDurationSeconds "$measurement_duration_seconds" \
     '. + {status:$status, finishedAt:$finishedAt,
-      rawCSV:{formatVersion:1, fileName:$csvFileName,
+      rawCSV:{formatVersion:2, fileName:$csvFileName,
         sha256:$csvSHA256, byteCount:$csvByteCount},
       results:{samples:$samples, baselineRSSKiB:$baselineRSSKiB,
         maximumRSSKiB:$maximumRSSKiB, growthKiB:$growthKiB,
+        baselinePhysicalFootprintKiB:$baselinePhysicalFootprintKiB,
+        maximumPhysicalFootprintKiB:$maximumPhysicalFootprintKiB,
+        physicalFootprintGrowthKiB:$physicalFootprintGrowthKiB,
         averageCPUPercent:$averageCPUPercent, p95CPUPercent:$p95CPUPercent,
         measurementDurationSeconds:$measurementDurationSeconds}}' \
     "$evidence" >"$evidence.tmp"
@@ -190,15 +209,22 @@ compute_results() {
 write_failed_evidence() {
   local exit_code="$1"
   local finished_at latest_rss_json baseline_rss_json maximum_rss_json growth_rss_json
+  local latest_physical_json baseline_physical_json maximum_physical_json growth_physical_json
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   latest_rss_json="${latest_rss:-null}"
+  latest_physical_json="${latest_physical_footprint:-null}"
   baseline_rss_json="${baseline_rss:-null}"
+  baseline_physical_json="${baseline_physical_footprint:-null}"
   if [[ -n "$baseline_rss" ]]; then
     maximum_rss_json="$maximum_rss"
     growth_rss_json="$((maximum_rss - baseline_rss))"
+    maximum_physical_json="$maximum_physical_footprint"
+    growth_physical_json="$((maximum_physical_footprint - baseline_physical_footprint))"
   else
     maximum_rss_json="null"
     growth_rss_json="null"
+    maximum_physical_json="null"
+    growth_physical_json="null"
   fi
   write_base_evidence "failed"
   jq \
@@ -211,11 +237,19 @@ write_failed_evidence() {
     --argjson baselineRSSKiB "$baseline_rss_json" \
     --argjson maximumRSSKiB "$maximum_rss_json" \
     --argjson growthKiB "$growth_rss_json" \
+    --argjson latestPhysicalFootprintKiB "$latest_physical_json" \
+    --argjson baselinePhysicalFootprintKiB "$baseline_physical_json" \
+    --argjson maximumPhysicalFootprintKiB "$maximum_physical_json" \
+    --argjson physicalFootprintGrowthKiB "$growth_physical_json" \
     '. + {finishedAt:$finishedAt, failureReason:$failureReason, exitCode:$exitCode,
       failure:{kind:$failureKind, reason:$failureReason, exitCode:$exitCode,
         measurements:{samples:$samples, latestRSSKiB:$latestRSSKiB,
           baselineRSSKiB:$baselineRSSKiB, maximumRSSKiB:$maximumRSSKiB,
-          growthKiB:$growthKiB}}}' \
+          growthKiB:$growthKiB,
+          latestPhysicalFootprintKiB:$latestPhysicalFootprintKiB,
+          baselinePhysicalFootprintKiB:$baselinePhysicalFootprintKiB,
+          maximumPhysicalFootprintKiB:$maximumPhysicalFootprintKiB,
+          physicalFootprintGrowthKiB:$physicalFootprintGrowthKiB}}}' \
     "$evidence" >"$evidence.tmp"
   mv "$evidence.tmp" "$evidence"
   if compute_results; then add_results "partialResults"; fi
@@ -253,25 +287,29 @@ caffeinate_pid=$!
 pid=$!
 
 take_sample() {
-  local metrics sampled_cpu_ns sampled_wall_ns sampled_rss
+  local metrics sampled_cpu_ns sampled_wall_ns sampled_physical_footprint sampled_rss
   if ! kill -0 "$caffeinate_pid" 2>/dev/null; then
     fail "sleep_prevention" "Sleep-prevention process exited during the performance soak"
   fi
   if ! metrics="$("$metrics_binary" "$pid" 2>/dev/null)"; then
     fail "metrics_unavailable" "MacMeter exited or process metrics became unavailable during the performance soak"
   fi
-  IFS=, read -r sampled_cpu_ns sampled_wall_ns <<<"$metrics"
-  if ! sampled_rss="$(ps -o rss= -p "$pid" | awk '{print $1}')"; then
+  IFS=, read -r sampled_cpu_ns sampled_wall_ns sampled_physical_footprint <<<"$metrics"
+  if ! [[ "$sampled_cpu_ns" =~ ^[0-9]+$ && "$sampled_wall_ns" =~ ^[0-9]+$ && "$sampled_physical_footprint" =~ ^[0-9]+$ ]]; then
+    fail "metrics_unavailable" "MacMeter process metrics returned malformed data during the performance soak"
+  fi
+  if ! sampled_rss="$(/bin/ps -o rss= -p "$pid" | awk '{print $1}')"; then
     fail "rss_unavailable" "MacMeter RSS became unavailable during the performance soak"
   fi
-  if [[ -z "$sampled_rss" ]]; then fail "rss_unavailable" "MacMeter RSS became unavailable during the performance soak"; fi
+  if ! [[ "$sampled_rss" =~ ^[0-9]+$ ]]; then fail "rss_unavailable" "MacMeter RSS became unavailable during the performance soak"; fi
   latest_cpu_ns="$sampled_cpu_ns"
   latest_wall_ns="$sampled_wall_ns"
   latest_rss="$sampled_rss"
+  latest_physical_footprint="$sampled_physical_footprint"
 }
 
 mkdir -p "$(dirname "$output")" "$(dirname "$evidence")"
-printf 'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase\n' >"$output"
+printf 'elapsed_seconds,rss_kib,physical_footprint_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase\n' >"$output"
 write_base_evidence "running"
 
 take_sample
@@ -288,12 +326,14 @@ if (( warmup_seconds == 0 )); then
   measurement_wall_start="$latest_wall_ns"
   baseline_rss="$latest_rss"
   maximum_rss="$latest_rss"
-  printf '0,%s,0.000,0.000,0,0,boundary\n' "$latest_rss" >>"$output"
+  baseline_physical_footprint="$latest_physical_footprint"
+  maximum_physical_footprint="$latest_physical_footprint"
+  printf '0,%s,%s,0.000,0.000,0,0,boundary\n' "$latest_rss" "$latest_physical_footprint" >>"$output"
   if (( maximum_rss > rss_limit_kib )); then
     fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB at the measurement boundary"
   fi
 else
-  printf '0,%s,0.000,0.000,0,0,warmup\n' "$latest_rss" >>"$output"
+  printf '0,%s,%s,0.000,0.000,0,0,warmup\n' "$latest_rss" "$latest_physical_footprint" >>"$output"
 fi
 
 while (( latest_wall_ns < finish_target_ns )); do
@@ -322,16 +362,19 @@ while (( latest_wall_ns < finish_target_ns )); do
     measurement_wall_start="$latest_wall_ns"
     baseline_rss="$latest_rss"
     maximum_rss="$latest_rss"
+    baseline_physical_footprint="$latest_physical_footprint"
+    maximum_physical_footprint="$latest_physical_footprint"
     cadence_index=0
-    printf '%s,%s,%s,%s,%s,%s,boundary\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
+    printf '%s,%s,%s,%s,%s,%s,%s,boundary\n' "$elapsed_seconds" "$latest_rss" "$latest_physical_footprint" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
     if (( maximum_rss > rss_limit_kib )); then
       fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB at the measurement boundary"
     fi
   elif [[ "$measurement_started" == true ]]; then
     if (( latest_rss > maximum_rss )); then maximum_rss="$latest_rss"; fi
+    if (( latest_physical_footprint > maximum_physical_footprint )); then maximum_physical_footprint="$latest_physical_footprint"; fi
     printf '%s\n' "$interval_cpu" >>"$cpu_values_file"
     sample_count=$((sample_count + 1))
-    printf '%s,%s,%s,%s,%s,%s,measurement\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
+    printf '%s,%s,%s,%s,%s,%s,%s,measurement\n' "$elapsed_seconds" "$latest_rss" "$latest_physical_footprint" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
     if (( maximum_rss > rss_limit_kib )); then
       fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"
     fi
@@ -339,7 +382,7 @@ while (( latest_wall_ns < finish_target_ns )); do
       fail "rss_growth" "RSS growth failed: $((maximum_rss - baseline_rss))KiB > ${growth_limit_kib}KiB"
     fi
   else
-    printf '%s,%s,%s,%s,%s,%s,warmup\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
+    printf '%s,%s,%s,%s,%s,%s,%s,warmup\n' "$elapsed_seconds" "$latest_rss" "$latest_physical_footprint" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
   fi
 
   previous_cpu_ns="$latest_cpu_ns"
@@ -349,7 +392,7 @@ done
 if (( sample_count == 0 )); then fail "no_samples" "No post-warm-up samples were collected"; fi
 
 compute_results
-echo "Performance soak: baseline=${baseline_rss}KiB max=${maximum_rss}KiB growth=${growth}KiB averageCPU=${average_cpu}% p95CPU=${cpu_p95}% duration=${measurement_duration_seconds}s"
+echo "Performance soak: RSS baseline=${baseline_rss}KiB max=${maximum_rss}KiB growth=${growth}KiB; physical footprint baseline=${baseline_physical_footprint}KiB max=${maximum_physical_footprint}KiB growth=$((maximum_physical_footprint - baseline_physical_footprint))KiB; averageCPU=${average_cpu}% p95CPU=${cpu_p95}% duration=${measurement_duration_seconds}s"
 
 if (( maximum_rss > rss_limit_kib )); then
   fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"

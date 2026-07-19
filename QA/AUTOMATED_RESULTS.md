@@ -20,16 +20,15 @@ Status: automated/local preview checks pass; production release evidence remains
 - Live M4 timing gates enforce refresh p95 error ≤200 ms, AppKit-host paint p95 <250 ms with a non-nil cached bitmap, and five-second cycle p95 error ≤200 ms. Exact values, UTC start time, commit SHA, and worktree state are generated at `QA/latest-timing.json` by every QA run.
 - Render matrix: Compact/Default/Cycle × all 16 metric combinations × light/dark × small/large/accessibility text. Every Cycle page fits a 136-point intrinsic-width budget; all-metric Compact and Default labels fit 300- and 480-point budgets respectively at small, large, and accessibility text sizes, without forced clipping in the test.
 
-## Performance diagnostic
+## Performance evidence
 
-- Short diagnostic only (not release-valid): 30-second warm-up and 120-second measurement.
-- RSS baseline 85,648 KiB; maximum 86,320 KiB; growth 672 KiB; average CPU 0.342%.
-- This correctly failed the RSS gate because it omitted the required 30-minute warm-up and remained above 80 MiB.
-- A separately launched process later fell below the limit, but isolated snapshots do not satisfy the release gate.
+- The first definitive run completed its 30-minute warm-up, then crossed literal RSS from 74,320 KiB to 90,736 KiB after about 3.5 measurement hours; the exact first failing row and bound failure evidence are archived under ignored `QA/performance-failures/20260719-0345-rss`.
+- Read-only `vmmap`/heap diagnostics on that process reported a 32.4 MiB physical footprint and 27 MiB heap despite 90.7 MiB `ps` RSS. A fresh process similarly reported 85,936 KiB RSS with only a 22.5 MiB physical footprint. These observations do not prove the 24-hour growth requirement, but they demonstrate that literal RSS includes substantial volatile shared SwiftUI/AppKit residency.
+- Evidence format v2 now records literal `/bin/ps` RSS and `proc_pid_rusage RUSAGE_INFO_V4` physical footprint in every row. The strict verifier independently recomputes baseline, maximum, and growth for both measures. RSS remains the active pass/fail gate until the owner approves another policy.
 
 ## Outstanding external/long-running release evidence
 
-- Default `Scripts/performance-soak.sh`: 30-minute warm-up plus 24-hour measurement. CPU uses cumulative `proc_pid_rusage` user+system nanoseconds over actual monotonic 59/61-second intervals, avoiding decaying-average and phase-alias bias. The raw CSV retains CPU/wall nanosecond deltas and is bound by filename, byte count, and SHA-256; the verifier ties elapsed time back to cumulative raw deltas, enforces the declared warmup and alternating cadence (except a target-truncated final interval), and independently recomputes all aggregates and thresholds. Live commit/hardware/binary/helper/toolchain/status/results provenance is generated at ignored `QA/latest-performance.json`.
+- A new default `Scripts/performance-soak.sh` run after the memory-policy decision: 30-minute warm-up plus 24-hour measurement. CPU uses cumulative `proc_pid_rusage` user+system nanoseconds over actual monotonic 59/61-second intervals, avoiding decaying-average and phase-alias bias. The v2 raw CSV retains RSS, physical footprint, and CPU/wall nanosecond deltas and is bound by filename, byte count, and SHA-256; the verifier ties elapsed time back to cumulative raw deltas, enforces the declared warmup and alternating cadence (except a target-truncated final interval), and independently recomputes all aggregates and approved thresholds. Live commit/hardware/binary/helper/toolchain/status/results provenance is generated at ignored `QA/latest-performance.json`.
 - Developer ID signing identity and notarytool profile; notarized/stapled DMG, Gatekeeper assessment, and clean install.
 - Installed-app Launch at Login across approval, denial, logout, and login.
 - M1/M2 laptop and Apple Silicon no-battery desktop.

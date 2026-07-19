@@ -11,7 +11,7 @@ test -f "$csv"
 expected_name="$(jq -er '.rawCSV.fileName' "$evidence")"
 expected_sha256="$(jq -er '.rawCSV.sha256' "$evidence")"
 expected_bytes="$(jq -er '.rawCSV.byteCount' "$evidence")"
-format_version="$(jq -er '.rawCSV.formatVersion | select(. == 1)' "$evidence")"
+format_version="$(jq -er '.rawCSV.formatVersion | select(. == 2)' "$evidence")"
 status="$(jq -er '.status | select(. == "passed" or . == "failed")' "$evidence")"
 failure_kind=""
 if [[ "$status" == "failed" ]]; then
@@ -58,16 +58,16 @@ LC_ALL=C awk -F, -v warmup_seconds="$warmup_seconds" -v soak_seconds="$soak_seco
   }
   NR == 1 { next }
   {
-    cumulative_wall_ns += $6 + 0
-    if ($7 == "boundary") {
+    cumulative_wall_ns += $7 + 0
+    if ($8 == "boundary") {
       boundary_count++
       if (cumulative_wall_ns < warmup_seconds * 1000000000) {
         invalid("measurement boundary precedes declared warmup")
       }
-    } else if ($7 == "measurement") {
+    } else if ($8 == "measurement") {
       measurement_count++
-      measurement_wall_ns[measurement_count] = $6 + 0
-      measurement_total_ns += $6 + 0
+      measurement_wall_ns[measurement_count] = $7 + 0
+      measurement_total_ns += $7 + 0
     }
   }
   END {
@@ -103,12 +103,16 @@ LC_ALL=C awk -F, -v warmup_seconds="$warmup_seconds" -v soak_seconds="$soak_seco
   }
 ' "$csv"
 
-measurement_count="$(awk -F, 'NR > 1 && $7 == "measurement" { count++ } END { print count + 0 }' "$csv")"
+measurement_count="$(awk -F, 'NR > 1 && $8 == "measurement" { count++ } END { print count + 0 }' "$csv")"
 if (( measurement_count == 0 )); then
   zero_summary="$(bash "$project_root/Scripts/summarize-performance-csv.sh" "$csv" --allow-zero)"
   jq -e --argjson zeroSummary "$zero_summary" '
-    .status == "failed"
-    and .rawCSV.formatVersion == 1
+    .schemaVersion == 2
+    and .status == "failed"
+    and .cpuMeasurementMethod == "proc_pid_rusage cumulative user+system CPU nanoseconds divided by CLOCK_MONOTONIC wall-time deltas"
+    and .rssMeasurementMethod == "/bin/ps resident set size in KiB; active release gate"
+    and .physicalFootprintMeasurementMethod == "proc_pid_rusage RUSAGE_INFO_V4 ri_phys_footprint bytes floored after division by 1024; observational until policy approval"
+    and .rawCSV.formatVersion == 2
     and (.failure.kind == "rss_limit")
     and (.failure.reason | type == "string" and length > 0)
     and (.failure.exitCode | type == "number" and . == floor and . != 0)
@@ -119,7 +123,11 @@ if (( measurement_count == 0 )); then
       samples:0, latestRSSKiB:$zeroSummary.baselineRSSKiB,
       baselineRSSKiB:$zeroSummary.baselineRSSKiB,
       maximumRSSKiB:$zeroSummary.maximumRSSKiB,
-      growthKiB:0
+      growthKiB:0,
+      latestPhysicalFootprintKiB:$zeroSummary.baselinePhysicalFootprintKiB,
+      baselinePhysicalFootprintKiB:$zeroSummary.baselinePhysicalFootprintKiB,
+      maximumPhysicalFootprintKiB:$zeroSummary.maximumPhysicalFootprintKiB,
+      physicalFootprintGrowthKiB:0
     }
     and $zeroSummary.baselineRSSKiB > .thresholds.rssLimitKiB
   ' "$evidence" >/dev/null
@@ -131,15 +139,19 @@ recomputed="$(bash "$project_root/Scripts/summarize-performance-csv.sh" "$csv")"
 rss_failure_stats="$(awk -F, \
   -v rss_limit="$rss_limit_kib" \
   -v growth_limit="$growth_limit_kib" '
-  $7 == "boundary" {
+  $8 == "boundary" {
     baseline = $2 + 0
     maximum = baseline
+    baseline_physical = $3 + 0
+    maximum_physical = baseline_physical
     boundary_over_limit = (baseline > rss_limit ? 1 : 0)
   }
-  $7 == "measurement" {
+  $8 == "measurement" {
     count++
     rss = $2 + 0
+    physical = $3 + 0
     if (rss > maximum) maximum = rss
+    if (physical > maximum_physical) maximum_physical = physical
     if (first_kind == "") {
       if (maximum > rss_limit) {
         first_kind = "rss_limit"
@@ -150,10 +162,11 @@ rss_failure_stats="$(awk -F, \
       }
     }
     last_rss = rss
+    last_physical = physical
   }
-  END { printf "%s,%d,%d,%d,%d,%d,%d", first_kind, first_row, count, last_rss, maximum, maximum - baseline, boundary_over_limit }
+  END { printf "%s,%d,%d,%d,%d,%d,%d,%d,%d,%d", first_kind, first_row, count, last_rss, maximum, maximum - baseline, boundary_over_limit, last_physical, maximum_physical, maximum_physical - baseline_physical }
 ' "$csv")"
-IFS=, read -r first_rss_failure_kind first_rss_failure_row raw_measurement_count last_rss raw_maximum_rss raw_growth_rss boundary_over_limit <<<"$rss_failure_stats"
+IFS=, read -r first_rss_failure_kind first_rss_failure_row raw_measurement_count last_rss raw_maximum_rss raw_growth_rss boundary_over_limit last_physical raw_maximum_physical raw_growth_physical <<<"$rss_failure_stats"
 first_rss_failure_kind_json="null"
 if [[ -n "$first_rss_failure_kind" ]]; then first_rss_failure_kind_json="\"$first_rss_failure_kind\""; fi
 
@@ -164,8 +177,15 @@ jq -e --argjson recomputed "$recomputed" \
   --argjson lastRSSKiB "$last_rss" \
   --argjson rawMaximumRSSKiB "$raw_maximum_rss" \
   --argjson rawGrowthKiB "$raw_growth_rss" \
-  --argjson boundaryOverLimit "$boundary_over_limit" '
-  if .status == "passed" then
+  --argjson boundaryOverLimit "$boundary_over_limit" \
+  --argjson lastPhysicalFootprintKiB "$last_physical" \
+  --argjson rawMaximumPhysicalFootprintKiB "$raw_maximum_physical" \
+  --argjson rawPhysicalFootprintGrowthKiB "$raw_growth_physical" '
+  .schemaVersion == 2
+  and .cpuMeasurementMethod == "proc_pid_rusage cumulative user+system CPU nanoseconds divided by CLOCK_MONOTONIC wall-time deltas"
+  and .rssMeasurementMethod == "/bin/ps resident set size in KiB; active release gate"
+  and .physicalFootprintMeasurementMethod == "proc_pid_rusage RUSAGE_INFO_V4 ri_phys_footprint bytes floored after division by 1024; observational until policy approval"
+  and (if .status == "passed" then
     .results == $recomputed
     and $recomputed.maximumRSSKiB <= .thresholds.rssLimitKiB
     and $recomputed.growthKiB <= .thresholds.growthLimitKiB
@@ -173,7 +193,7 @@ jq -e --argjson recomputed "$recomputed" \
     and $recomputed.p95CPUPercent <= .thresholds.p95CPUPercentLimit
   elif .status == "failed" then
     .partialResults == $recomputed
-    and .rawCSV.formatVersion == 1
+    and .rawCSV.formatVersion == 2
     and (.failure.kind | type == "string" and length > 0)
     and (.failure.reason | type == "string" and length > 0)
     and (.failure.exitCode | type == "number" and . == floor and . != 0)
@@ -184,6 +204,10 @@ jq -e --argjson recomputed "$recomputed" \
     and .failure.measurements.baselineRSSKiB == $recomputed.baselineRSSKiB
     and .failure.measurements.maximumRSSKiB == $rawMaximumRSSKiB
     and .failure.measurements.growthKiB == $rawGrowthKiB
+    and .failure.measurements.latestPhysicalFootprintKiB == $lastPhysicalFootprintKiB
+    and .failure.measurements.baselinePhysicalFootprintKiB == $recomputed.baselinePhysicalFootprintKiB
+    and .failure.measurements.maximumPhysicalFootprintKiB == $rawMaximumPhysicalFootprintKiB
+    and .failure.measurements.physicalFootprintGrowthKiB == $rawPhysicalFootprintGrowthKiB
     and $boundaryOverLimit == 0
     and (.finishedAt | type == "string" and length > 0)
     and (
@@ -214,7 +238,7 @@ jq -e --argjson recomputed "$recomputed" \
     )
   else
     false
-  end
+  end)
 ' "$evidence" >/dev/null
 
 echo "Raw performance CSV binding and recomputed results validate for $(jq -r '.status' "$evidence") evidence"

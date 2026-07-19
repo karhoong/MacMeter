@@ -34,7 +34,9 @@ int main(int argc, char **argv) {
     uint64_t cpu_nanoseconds = usage.ri_user_time + usage.ri_system_time;
     uint64_t wall_nanoseconds =
         ((uint64_t)monotonic.tv_sec * UINT64_C(1000000000)) + (uint64_t)monotonic.tv_nsec;
-    printf("%llu,%llu\n", (unsigned long long)cpu_nanoseconds,
-           (unsigned long long)wall_nanoseconds);
+    uint64_t physical_footprint_kib = usage.ri_phys_footprint / UINT64_C(1024);
+    printf("%llu,%llu,%llu\n", (unsigned long long)cpu_nanoseconds,
+           (unsigned long long)wall_nanoseconds,
+           (unsigned long long)physical_footprint_kib);
     return 0;
 }

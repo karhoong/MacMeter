@@ -25,12 +25,19 @@ xcrun clang -O2 -Wall -Wextra -Werror \
 xcrun clang -O2 -Wall -Wextra -Werror \
   "$project_root/Scripts/process-metrics.c" -o "$helper_verify"
 test "$(shasum -a 256 "$helper" | awk '{print $1}')" = "$(shasum -a 256 "$helper_verify" | awk '{print $1}')"
-IFS=, read -r cpu_before wall_before < <("$helper" "$$")
+helper_before="$("$helper" "$$")"
+if ! [[ "$helper_before" =~ ^[0-9]+,[0-9]+,[0-9]+$ ]]; then
+  echo "Process metrics helper did not emit exactly three unsigned fields" >&2
+  exit 1
+fi
+IFS=, read -r cpu_before wall_before footprint_before <<<"$helper_before"
 work=0
 for ((index = 0; index < 50000; index++)); do work=$((work + index)); done
-IFS=, read -r cpu_after wall_after < <("$helper" "$$")
+IFS=, read -r cpu_after wall_after footprint_after < <("$helper" "$$")
 test "$cpu_after" -ge "$cpu_before"
 test "$wall_after" -gt "$wall_before"
+test "$footprint_before" -gt 0
+test "$footprint_after" -gt 0
 test "$work" -gt 0
 
 if rg -n 'ps[[:space:]].*-o[[:space:]]+%cpu|cpu_sum' "$project_root/Scripts/performance-soak.sh"; then
@@ -51,7 +58,7 @@ if require_clean_worktree "$git_fixture"; then
 fi
 make_fixture() {
   jq -n '{
-    status:"passed", commit:"fixture-commit", hardware:"Fixture Mac",
+    schemaVersion:2, status:"passed", commit:"fixture-commit", hardware:"Fixture Mac",
     binarySHA256:"fixture-binary", metricsSourceSHA256:"fixture-metrics",
     metricsBinarySHA256:"fixture-metrics-binary", metricsCompiler:"Fixture Clang",
     sleepPreventionMethod:"caffeinate -dimsu -w harness PID with per-sample liveness checks",
@@ -60,13 +67,17 @@ make_fixture() {
     warmupSeconds:1800, soakSeconds:86400, sampleSeconds:60,
     sampleCadenceSeconds:[59,61],
     cpuMeasurementMethod:"proc_pid_rusage cumulative user+system CPU nanoseconds divided by CLOCK_MONOTONIC wall-time deltas",
+    rssMeasurementMethod:"/bin/ps resident set size in KiB; active release gate",
+    physicalFootprintMeasurementMethod:"proc_pid_rusage RUSAGE_INFO_V4 ri_phys_footprint bytes floored after division by 1024; observational until policy approval",
     thresholds:{rssLimitKiB:81920, growthLimitKiB:5120,
       averageCPUPercentLimit:1, p95CPUPercentLimit:3},
-    rawCSV:{formatVersion:1, fileName:"fixture.csv",
+    rawCSV:{formatVersion:2, fileName:"fixture.csv",
       sha256:"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       byteCount:100},
     results:{samples:1440, baselineRSSKiB:73472, maximumRSSKiB:74000,
       growthKiB:528, averageCPUPercent:0.7, p95CPUPercent:2.2,
+      baselinePhysicalFootprintKiB:22000, maximumPhysicalFootprintKiB:22400,
+      physicalFootprintGrowthKiB:400,
       measurementDurationSeconds:86401}
   }' >"$fixture"
 }
@@ -110,15 +121,30 @@ reject_fixture
 make_fixture
 jq '.rawCSV.fileName="../fixture.csv"' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_fixture
+make_fixture
+jq '.schemaVersion=1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_fixture
+make_fixture
+jq 'del(.rssMeasurementMethod)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_fixture
+make_fixture
+jq 'del(.physicalFootprintMeasurementMethod)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_fixture
+make_fixture
+jq '.results.maximumPhysicalFootprintKiB=.results.baselinePhysicalFootprintKiB-1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_fixture
+make_fixture
+jq '.results.physicalFootprintGrowthKiB=399.5' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_fixture
 
 write_csv_fixture() {
   printf '%s\n' \
-    'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
-    '0,90,0.000,0.000,0,0,warmup' \
-    '1800,100,0.100,1800.000,1800000000,1800000000000,boundary' \
-    '1859,110,0.100,59.000,59000000,59000000000,measurement' \
-    '1920,120,0.200,61.000,122000000,61000000000,measurement' \
-    '1979,115,0.300,59.000,177000000,59000000000,measurement' >"$csv_fixture"
+    'elapsed_seconds,rss_kib,physical_footprint_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+    '0,90,40,0.000,0.000,0,0,warmup' \
+    '1800,100,50,0.100,1800.000,1800000000,1800000000000,boundary' \
+    '1859,110,60,0.100,59.000,59000000,59000000000,measurement' \
+    '1920,120,70,0.200,61.000,122000000,61000000000,measurement' \
+    '1979,115,65,0.300,59.000,177000000,59000000000,measurement' >"$csv_fixture"
 }
 bind_csv_fixture() {
   local summary sha256 byte_count
@@ -130,31 +156,37 @@ bind_csv_fixture() {
     --arg sha256 "$sha256" \
     --argjson byteCount "$byte_count" \
     --argjson results "$summary" \
-    '.rawCSV={formatVersion:1,fileName:$name,sha256:$sha256,byteCount:$byteCount}
+    '.rawCSV={formatVersion:2,fileName:$name,sha256:$sha256,byteCount:$byteCount}
       | .results=$results' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 }
 write_failed_csv_fixture() {
   printf '%s\n' \
-    'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
-    '0,90,0.000,0.000,0,0,warmup' \
-    '1800,100,0.100,1800.000,1800000000,1800000000000,boundary' \
-    '1859,110,0.100,59.000,59000000,59000000000,measurement' \
-    '1920,118,0.200,61.000,122000000,61000000000,measurement' \
-    '1979,120,0.300,59.000,177000000,59000000000,measurement' >"$csv_fixture"
+    'elapsed_seconds,rss_kib,physical_footprint_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+    '0,90,40,0.000,0.000,0,0,warmup' \
+    '1800,100,50,0.100,1800.000,1800000000,1800000000000,boundary' \
+    '1859,110,60,0.100,59.000,59000000,59000000000,measurement' \
+    '1920,118,68,0.200,61.000,122000000,61000000000,measurement' \
+    '1979,120,70,0.300,59.000,177000000,59000000000,measurement' >"$csv_fixture"
 }
 rebind_failed_csv_fixture() {
-  local summary sha256 byte_count latest_rss
+  local summary sha256 byte_count latest_rss latest_physical
   summary="$(bash "$project_root/Scripts/summarize-performance-csv.sh" "$csv_fixture")"
   sha256="$(shasum -a 256 "$csv_fixture" | awk '{print $1}')"
   byte_count="$(wc -c <"$csv_fixture" | tr -d '[:space:]')"
-  latest_rss="$(awk -F, '$7 == "measurement" { latest = $2 } END { print latest }' "$csv_fixture")"
+  latest_rss="$(awk -F, '$8 == "measurement" { latest = $2 } END { print latest }' "$csv_fixture")"
+  latest_physical="$(awk -F, '$8 == "measurement" { latest = $3 } END { print latest }' "$csv_fixture")"
   jq --arg name "$(basename "$csv_fixture")" --arg sha256 "$sha256" \
-    --argjson byteCount "$byte_count" --argjson summary "$summary" --argjson latestRSSKiB "$latest_rss" '
-    .rawCSV={formatVersion:1,fileName:$name,sha256:$sha256,byteCount:$byteCount}
+    --argjson byteCount "$byte_count" --argjson summary "$summary" --argjson latestRSSKiB "$latest_rss" \
+    --argjson latestPhysicalFootprintKiB "$latest_physical" '
+    .rawCSV={formatVersion:2,fileName:$name,sha256:$sha256,byteCount:$byteCount}
     | .partialResults=$summary
     | .failure.measurements={samples:$summary.samples,latestRSSKiB:$latestRSSKiB,
         baselineRSSKiB:$summary.baselineRSSKiB,maximumRSSKiB:$summary.maximumRSSKiB,
-        growthKiB:$summary.growthKiB}' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+        growthKiB:$summary.growthKiB,
+        latestPhysicalFootprintKiB:$latestPhysicalFootprintKiB,
+        baselinePhysicalFootprintKiB:$summary.baselinePhysicalFootprintKiB,
+        maximumPhysicalFootprintKiB:$summary.maximumPhysicalFootprintKiB,
+        physicalFootprintGrowthKiB:$summary.physicalFootprintGrowthKiB}' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 }
 make_failed_fixture() {
   make_fixture
@@ -167,7 +199,11 @@ make_failed_fixture() {
     | .failure={kind:"rss_limit",reason:.failureReason,exitCode:1,
         measurements:{samples:.results.samples,latestRSSKiB:120,
           baselineRSSKiB:.results.baselineRSSKiB,
-          maximumRSSKiB:.results.maximumRSSKiB,growthKiB:.results.growthKiB}}
+          maximumRSSKiB:.results.maximumRSSKiB,growthKiB:.results.growthKiB,
+          latestPhysicalFootprintKiB:70,
+          baselinePhysicalFootprintKiB:.results.baselinePhysicalFootprintKiB,
+          maximumPhysicalFootprintKiB:.results.maximumPhysicalFootprintKiB,
+          physicalFootprintGrowthKiB:.results.physicalFootprintGrowthKiB}}
     | .partialResults=.results
     | del(.results)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 }
@@ -181,7 +217,9 @@ reject_csv_binding() {
 write_csv_fixture
 summary="$(bash "$project_root/Scripts/summarize-performance-csv.sh" "$csv_fixture")"
 jq -e '. == {samples:3, baselineRSSKiB:100, maximumRSSKiB:120,
-  growthKiB:20, averageCPUPercent:0.2, p95CPUPercent:0.3,
+  growthKiB:20, baselinePhysicalFootprintKiB:50,
+  maximumPhysicalFootprintKiB:70, physicalFootprintGrowthKiB:20,
+  averageCPUPercent:0.2, p95CPUPercent:0.3,
   measurementDurationSeconds:179}' <<<"$summary" >/dev/null
 make_fixture
 bind_csv_fixture
@@ -197,8 +235,20 @@ if validate_fixture; then
 fi
 jq '.partialResults.maximumRSSKiB += 1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_csv_binding
+for mutation in \
+  '.failure.measurements.latestPhysicalFootprintKiB += 1' \
+  '.failure.measurements.baselinePhysicalFootprintKiB += 1' \
+  '.failure.measurements.maximumPhysicalFootprintKiB += 1' \
+  '.failure.measurements.physicalFootprintGrowthKiB += 1'; do
+  make_failed_fixture
+  jq "$mutation" "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+  reject_csv_binding
+done
 make_failed_fixture
 jq 'del(.rawCSV)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq 'del(.cpuMeasurementMethod)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_csv_binding
 make_failed_fixture
 jq '.failureReason=""' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
@@ -217,7 +267,7 @@ make_failed_fixture
 jq '.failure.exitCode=1.5 | .exitCode=1.5' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_csv_binding
 make_failed_fixture
-jq '.rawCSV.formatVersion=2' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+jq '.rawCSV.formatVersion=1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_csv_binding
 make_failed_fixture
 jq '.thresholds.rssLimitKiB="119"' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
@@ -250,34 +300,39 @@ reject_csv_binding
 # A boundary that already exceeds the absolute RSS limit is a valid, bound,
 # zero-measurement failure and must not wait for another cadence interval.
 printf '%s\n' \
-  'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
-  '0,120,0.000,0.000,0,0,boundary' >"$csv_fixture"
+  'elapsed_seconds,rss_kib,physical_footprint_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+  '0,120,50,0.000,0.000,0,0,boundary' >"$csv_fixture"
 make_fixture
 sha256="$(shasum -a 256 "$csv_fixture" | awk '{print $1}')"
 byte_count="$(wc -c <"$csv_fixture" | tr -d '[:space:]')"
 jq --arg name "$(basename "$csv_fixture")" --arg sha256 "$sha256" --argjson byteCount "$byte_count" '
   .status="failed" | .warmupSeconds=0 | .soakSeconds=10 | .sampleSeconds=1
   | .sampleCadenceSeconds=[1] | .thresholds.rssLimitKiB=119
-  | .rawCSV={formatVersion:1,fileName:$name,sha256:$sha256,byteCount:$byteCount}
+  | .rawCSV={formatVersion:2,fileName:$name,sha256:$sha256,byteCount:$byteCount}
   | .failureReason="RSS limit failed: 120KiB > 119KiB at the measurement boundary"
   | .exitCode=1
   | .failure={kind:"rss_limit",reason:.failureReason,exitCode:1,
       measurements:{samples:0,latestRSSKiB:120,baselineRSSKiB:120,
-        maximumRSSKiB:120,growthKiB:0}}
+        maximumRSSKiB:120,growthKiB:0,
+        latestPhysicalFootprintKiB:50,baselinePhysicalFootprintKiB:50,
+        maximumPhysicalFootprintKiB:50,physicalFootprintGrowthKiB:0}}
   | del(.results)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 bash "$project_root/Scripts/verify-performance-csv.sh" "$fixture" "$csv_fixture" >/dev/null
+jq '.failure.measurements.latestPhysicalFootprintKiB += 1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+jq '.failure.measurements.latestPhysicalFootprintKiB -= 1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 jq '.thresholds.rssLimitKiB=120' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_csv_binding
 
-# Zero-sample failures still traverse the strict seven-column parser.
+# Zero-sample failures still traverse the strict eight-column parser.
 for mutation in \
   'wrong_header' \
   'bad_elapsed' \
   'bad_derived' \
   'unknown_phase'; do
   printf '%s\n' \
-    'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
-    '0,120,0.000,0.000,0,0,boundary' >"$csv_fixture"
+    'elapsed_seconds,rss_kib,physical_footprint_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+    '0,120,50,0.000,0.000,0,0,boundary' >"$csv_fixture"
   case "$mutation" in
     wrong_header) sed '1s/elapsed_seconds/elapsed/' "$csv_fixture" >"$csv_fixture.tmp" ;;
     bad_elapsed) sed '2s/^0,/1,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
@@ -290,6 +345,24 @@ for mutation in \
   jq --arg sha256 "$sha256" --argjson byteCount "$byte_count" \
     '.rawCSV.sha256=$sha256 | .rawCSV.byteCount=$byteCount' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
   reject_csv_binding
+done
+
+# The strict v2 parser rejects malformed or missing physical-footprint values.
+for mutation in negative fractional nonnumeric missing extra v1_header; do
+  write_csv_fixture
+  case "$mutation" in
+    negative) sed 's/^1920,120,70,/1920,120,-1,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    fractional) sed 's/^1920,120,70,/1920,120,70.5,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    nonnumeric) sed 's/^1920,120,70,/1920,120,unknown,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    missing) sed 's/^1920,120,70,/1920,120,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    extra) sed 's/^1920,120,70,/1920,120,70,extra,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    v1_header) sed '1s/,physical_footprint_kib//' "$csv_fixture" >"$csv_fixture.tmp" ;;
+  esac
+  mv "$csv_fixture.tmp" "$csv_fixture"
+  if bash "$project_root/Scripts/summarize-performance-csv.sh" "$csv_fixture" >/dev/null 2>&1; then
+    echo "Malformed v2 physical-footprint CSV unexpectedly passed: $mutation" >&2
+    exit 1
+  fi
 done
 
 write_csv_fixture
@@ -305,7 +378,11 @@ jq '.status="failed"
   | .failure={kind:"cpu_average",reason:.failureReason,exitCode:1,
       measurements:{samples:.results.samples,latestRSSKiB:115,
         baselineRSSKiB:.results.baselineRSSKiB,
-        maximumRSSKiB:.results.maximumRSSKiB,growthKiB:.results.growthKiB}}
+        maximumRSSKiB:.results.maximumRSSKiB,growthKiB:.results.growthKiB,
+        latestPhysicalFootprintKiB:65,
+        baselinePhysicalFootprintKiB:.results.baselinePhysicalFootprintKiB,
+        maximumPhysicalFootprintKiB:.results.maximumPhysicalFootprintKiB,
+        physicalFootprintGrowthKiB:.results.physicalFootprintGrowthKiB}}
   | .partialResults=.results
   | del(.results)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 reject_csv_binding
@@ -326,6 +403,9 @@ for mutation in \
   '.results.baselineRSSKiB += 1' \
   '.results.maximumRSSKiB += 1' \
   '.results.growthKiB += 1' \
+  '.results.baselinePhysicalFootprintKiB += 1' \
+  '.results.maximumPhysicalFootprintKiB += 1' \
+  '.results.physicalFootprintGrowthKiB += 1' \
   '.thresholds.rssLimitKiB = 119' \
   '.thresholds.growthLimitKiB = 19' \
   '.thresholds.averageCPUPercentLimit = 0.199' \
@@ -335,6 +415,29 @@ for mutation in \
   jq "$mutation" "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
   reject_csv_binding
 done
+
+# Physical footprint is observational in v2: it is strictly recorded but is
+# not silently substituted for the still-active RSS release gate.
+write_csv_fixture
+sed 's/,50,0.100,1800.000/,999999,0.100,1800.000/;
+  s/,60,0.100,59.000/,1000000,0.100,59.000/;
+  s/,70,0.200,61.000/,2000000,0.200,61.000/;
+  s/,65,0.300,59.000/,1500000,0.300,59.000/' \
+  "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
+make_fixture
+bind_csv_fixture
+bash "$project_root/Scripts/verify-performance-csv.sh" "$fixture" "$csv_fixture" >/dev/null
+
+# Rebinding the file digest cannot conceal a physical-footprint aggregate edit.
+write_csv_fixture
+make_fixture
+bind_csv_fixture
+sed 's/^1920,120,70,/1920,120,71,/' "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
+sha256="$(shasum -a 256 "$csv_fixture" | awk '{print $1}')"
+byte_count="$(wc -c <"$csv_fixture" | tr -d '[:space:]')"
+jq --arg sha256 "$sha256" --argjson byteCount "$byte_count" \
+  '.rawCSV.sha256=$sha256 | .rawCSV.byteCount=$byteCount' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
 
 make_fixture
 bind_csv_fixture
@@ -376,7 +479,7 @@ fi
 
 # A rebound CSV cannot claim the required warmup without raw elapsed time.
 write_csv_fixture
-sed 's/^1800,100,0.100,1800.000,1800000000,1800000000000,boundary$/0,100,0.000,0.000,0,0,boundary/;
+sed 's/^1800,100,50,0.100,1800.000,1800000000,1800000000000,boundary$/0,100,50,0.000,0.000,0,0,boundary/;
   s/^1859,110/59,110/; s/^1920,120/120,120/; s/^1979,115/179,115/' \
   "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
 make_fixture
@@ -385,7 +488,7 @@ reject_csv_binding
 
 # Rebinding hashes and summaries cannot conceal a non-59/61 measurement interval.
 write_csv_fixture
-sed 's/^1920,120,0.200,61.000,122000000,61000000000/1860,120,0.200,1.000,2000000,1000000000/;
+sed 's/^1920,120,70,0.200,61.000,122000000,61000000000/1860,120,70,0.200,1.000,2000000,1000000000/;
   s/^1979,115/1919,115/' "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
 make_fixture
 bind_csv_fixture
@@ -393,9 +496,9 @@ reject_csv_binding
 
 # Overlapping tolerances must not let a phase-locked constant cadence pass as 59/61.
 write_csv_fixture
-sed 's/^1859,110,0.100,59.000,59000000,59000000000/1860,110,0.100,60.000,60000000,60000000000/;
-  s/^1920,120,0.200,61.000,122000000,61000000000/1920,120,0.200,60.000,120000000,60000000000/;
-  s/^1979,115,0.300,59.000,177000000,59000000000/1980,115,0.300,60.000,180000000,60000000000/' \
+sed 's/^1859,110,60,0.100,59.000,59000000,59000000000/1860,110,60,0.100,60.000,60000000,60000000000/;
+  s/^1920,120,70,0.200,61.000,122000000,61000000000/1920,120,70,0.200,60.000,120000000,60000000000/;
+  s/^1979,115,65,0.300,59.000,177000000,59000000000/1980,115,65,0.300,60.000,180000000,60000000000/' \
   "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
 make_fixture
 bind_csv_fixture
@@ -403,9 +506,9 @@ reject_csv_binding
 
 # A swapped 61/59 sequence cannot satisfy the declared 59/61 order.
 write_csv_fixture
-sed 's/^1859,110,0.100,59.000,59000000,59000000000/1861,110,0.100,61.000,61000000,61000000000/;
-  s/^1920,120,0.200,61.000,122000000,61000000000/1920,120,0.200,59.000,118000000,59000000000/;
-  s/^1979,115,0.300,59.000,177000000,59000000000/1981,115,0.300,61.000,183000000,61000000000/' \
+sed 's/^1859,110,60,0.100,59.000,59000000,59000000000/1861,110,60,0.100,61.000,61000000,61000000000/;
+  s/^1920,120,70,0.200,61.000,122000000,61000000000/1920,120,70,0.200,59.000,118000000,59000000000/;
+  s/^1979,115,65,0.300,59.000,177000000,59000000000/1981,115,65,0.300,61.000,183000000,61000000000/' \
   "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
 make_fixture
 bind_csv_fixture
@@ -413,7 +516,7 @@ reject_csv_binding
 
 # A short final row is invalid unless it is the interval that crosses soakSeconds.
 write_csv_fixture
-sed 's/^1979,115,0.300,59.000,177000000,59000000000/1921,115,0.300,1.000,3000000,1000000000/' \
+sed 's/^1979,115,65,0.300,59.000,177000000,59000000000/1921,115,65,0.300,1.000,3000000,1000000000/' \
   "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
 make_fixture
 bind_csv_fixture
