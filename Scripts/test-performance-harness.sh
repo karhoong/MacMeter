@@ -133,6 +133,44 @@ bind_csv_fixture() {
     '.rawCSV={formatVersion:1,fileName:$name,sha256:$sha256,byteCount:$byteCount}
       | .results=$results' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
 }
+write_failed_csv_fixture() {
+  printf '%s\n' \
+    'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+    '0,90,0.000,0.000,0,0,warmup' \
+    '1800,100,0.100,1800.000,1800000000,1800000000000,boundary' \
+    '1859,110,0.100,59.000,59000000,59000000000,measurement' \
+    '1920,118,0.200,61.000,122000000,61000000000,measurement' \
+    '1979,120,0.300,59.000,177000000,59000000000,measurement' >"$csv_fixture"
+}
+rebind_failed_csv_fixture() {
+  local summary sha256 byte_count latest_rss
+  summary="$(bash "$project_root/Scripts/summarize-performance-csv.sh" "$csv_fixture")"
+  sha256="$(shasum -a 256 "$csv_fixture" | awk '{print $1}')"
+  byte_count="$(wc -c <"$csv_fixture" | tr -d '[:space:]')"
+  latest_rss="$(awk -F, '$7 == "measurement" { latest = $2 } END { print latest }' "$csv_fixture")"
+  jq --arg name "$(basename "$csv_fixture")" --arg sha256 "$sha256" \
+    --argjson byteCount "$byte_count" --argjson summary "$summary" --argjson latestRSSKiB "$latest_rss" '
+    .rawCSV={formatVersion:1,fileName:$name,sha256:$sha256,byteCount:$byteCount}
+    | .partialResults=$summary
+    | .failure.measurements={samples:$summary.samples,latestRSSKiB:$latestRSSKiB,
+        baselineRSSKiB:$summary.baselineRSSKiB,maximumRSSKiB:$summary.maximumRSSKiB,
+        growthKiB:$summary.growthKiB}' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+}
+make_failed_fixture() {
+  make_fixture
+  write_failed_csv_fixture
+  bind_csv_fixture
+  jq '.status="failed"
+    | .thresholds.rssLimitKiB=119
+    | .failureReason="RSS limit failed: 120KiB > 119KiB after warm-up"
+    | .exitCode=1
+    | .failure={kind:"rss_limit",reason:.failureReason,exitCode:1,
+        measurements:{samples:.results.samples,latestRSSKiB:120,
+          baselineRSSKiB:.results.baselineRSSKiB,
+          maximumRSSKiB:.results.maximumRSSKiB,growthKiB:.results.growthKiB}}
+    | .partialResults=.results
+    | del(.results)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+}
 reject_csv_binding() {
   if bash "$project_root/Scripts/verify-performance-csv.sh" "$fixture" "$csv_fixture" >/dev/null 2>&1; then
     echo "Invalid raw performance CSV binding unexpectedly passed" >&2
@@ -148,6 +186,137 @@ jq -e '. == {samples:3, baselineRSSKiB:100, maximumRSSKiB:120,
 make_fixture
 bind_csv_fixture
 bash "$project_root/Scripts/verify-performance-csv.sh" "$fixture" "$csv_fixture" >/dev/null
+
+# Failed evidence is also raw-bound and independently recomputed, but never
+# accepted by the release-only performance-evidence.jq contract.
+make_failed_fixture
+bash "$project_root/Scripts/verify-performance-csv.sh" "$fixture" "$csv_fixture" >/dev/null
+if validate_fixture; then
+  echo "Failed evidence unexpectedly passed the release contract" >&2
+  exit 1
+fi
+jq '.partialResults.maximumRSSKiB += 1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq 'del(.rawCSV)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.failureReason=""' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.failure.kind="rss_growth"' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.thresholds.rssLimitKiB=120' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+jq '.thresholds.rssLimitKiB=119' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+make_failed_fixture
+jq '.failure.exitCode=0 | .exitCode=0' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.failure.exitCode=1.5 | .exitCode=1.5' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.rawCSV.formatVersion=2' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.thresholds.rssLimitKiB="119"' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.thresholds.growthLimitKiB=-1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.thresholds.averageCPUPercentLimit="1"' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+make_failed_fixture
+jq '.thresholds.p95CPUPercentLimit=-0.1' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+
+# An RSS failure must end on the first crossing; a rebound after an earlier
+# breach is impossible under the producer's fail-fast state machine.
+make_failed_fixture
+sed 's/^1920,118/1920,120/; s/^1979,120/1979,115/' "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
+rebind_failed_csv_fixture
+reject_csv_binding
+
+# A producer with immediate boundary gating cannot emit later measurements
+# when the boundary itself already exceeds the absolute RSS limit.
+make_failed_fixture
+sed -n '1,4p' "$csv_fixture" >"$csv_fixture.tmp" && mv "$csv_fixture.tmp" "$csv_fixture"
+rebind_failed_csv_fixture
+jq '.thresholds.rssLimitKiB=99' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+
+# A boundary that already exceeds the absolute RSS limit is a valid, bound,
+# zero-measurement failure and must not wait for another cadence interval.
+printf '%s\n' \
+  'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+  '0,120,0.000,0.000,0,0,boundary' >"$csv_fixture"
+make_fixture
+sha256="$(shasum -a 256 "$csv_fixture" | awk '{print $1}')"
+byte_count="$(wc -c <"$csv_fixture" | tr -d '[:space:]')"
+jq --arg name "$(basename "$csv_fixture")" --arg sha256 "$sha256" --argjson byteCount "$byte_count" '
+  .status="failed" | .warmupSeconds=0 | .soakSeconds=10 | .sampleSeconds=1
+  | .sampleCadenceSeconds=[1] | .thresholds.rssLimitKiB=119
+  | .rawCSV={formatVersion:1,fileName:$name,sha256:$sha256,byteCount:$byteCount}
+  | .failureReason="RSS limit failed: 120KiB > 119KiB at the measurement boundary"
+  | .exitCode=1
+  | .failure={kind:"rss_limit",reason:.failureReason,exitCode:1,
+      measurements:{samples:0,latestRSSKiB:120,baselineRSSKiB:120,
+        maximumRSSKiB:120,growthKiB:0}}
+  | del(.results)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+bash "$project_root/Scripts/verify-performance-csv.sh" "$fixture" "$csv_fixture" >/dev/null
+jq '.thresholds.rssLimitKiB=120' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+
+# Zero-sample failures still traverse the strict seven-column parser.
+for mutation in \
+  'wrong_header' \
+  'bad_elapsed' \
+  'bad_derived' \
+  'unknown_phase'; do
+  printf '%s\n' \
+    'elapsed_seconds,rss_kib,cpu_interval_percent,interval_seconds,cpu_delta_ns,wall_delta_ns,phase' \
+    '0,120,0.000,0.000,0,0,boundary' >"$csv_fixture"
+  case "$mutation" in
+    wrong_header) sed '1s/elapsed_seconds/elapsed/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    bad_elapsed) sed '2s/^0,/1,/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    bad_derived) sed '2s/0.000,0.000,0,0/0.001,0.000,0,0/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+    unknown_phase) sed '2s/boundary/mystery/' "$csv_fixture" >"$csv_fixture.tmp" ;;
+  esac
+  mv "$csv_fixture.tmp" "$csv_fixture"
+  sha256="$(shasum -a 256 "$csv_fixture" | awk '{print $1}')"
+  byte_count="$(wc -c <"$csv_fixture" | tr -d '[:space:]')"
+  jq --arg sha256 "$sha256" --argjson byteCount "$byte_count" \
+    '.rawCSV.sha256=$sha256 | .rawCSV.byteCount=$byteCount' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+  reject_csv_binding
+done
+
+write_csv_fixture
+
+# End-only CPU failures cannot be claimed from an early, cadence-valid partial
+# run even when the partial aggregate currently exceeds the threshold.
+make_fixture
+bind_csv_fixture
+jq '.status="failed"
+  | .thresholds.averageCPUPercentLimit=0.1
+  | .failureReason="Idle CPU limit failed"
+  | .exitCode=1
+  | .failure={kind:"cpu_average",reason:.failureReason,exitCode:1,
+      measurements:{samples:.results.samples,latestRSSKiB:115,
+        baselineRSSKiB:.results.baselineRSSKiB,
+        maximumRSSKiB:.results.maximumRSSKiB,growthKiB:.results.growthKiB}}
+  | .partialResults=.results
+  | del(.results)' "$fixture" >"$fixture.tmp" && mv "$fixture.tmp" "$fixture"
+reject_csv_binding
+
+write_csv_fixture
+
+if ! rg -n 'maximum_rss > rss_limit_kib' "$project_root/Scripts/performance-soak.sh" >/dev/null ||
+   ! rg -n 'maximum_rss - baseline_rss > growth_limit_kib' "$project_root/Scripts/performance-soak.sh" >/dev/null; then
+  echo "Performance harness is missing per-sample fail-fast RSS checks" >&2
+  exit 1
+fi
 
 for mutation in \
   '.results.samples += 1' \

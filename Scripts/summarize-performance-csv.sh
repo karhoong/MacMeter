@@ -3,6 +3,13 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 csv="${1:?usage: summarize-performance-csv.sh RAW_CSV}"
+allow_zero=false
+if [[ "${2:-}" == "--allow-zero" ]]; then
+  allow_zero=true
+elif [[ -n "${2:-}" ]]; then
+  echo "usage: summarize-performance-csv.sh RAW_CSV [--allow-zero]" >&2
+  exit 64
+fi
 source "$project_root/Scripts/performance-math.sh"
 
 test -f "$csv"
@@ -10,7 +17,7 @@ values_file="$(mktemp /tmp/macmeter-csv-cpu-values.XXXXXX)"
 stats_file="$(mktemp /tmp/macmeter-csv-stats.XXXXXX)"
 trap 'rm -f "$values_file" "$stats_file"' EXIT
 
-LC_ALL=C awk -F, -v values_file="$values_file" -v stats_file="$stats_file" '
+LC_ALL=C awk -F, -v values_file="$values_file" -v stats_file="$stats_file" -v allow_zero="$allow_zero" '
   function invalid(message) {
     print "Invalid performance CSV at line " NR ": " message > "/dev/stderr"
     failed = 1
@@ -79,12 +86,21 @@ LC_ALL=C awk -F, -v values_file="$values_file" -v stats_file="$stats_file" '
     if (failed) exit 1
     if (NR < 2) invalid("contains no data rows")
     if (!seen_boundary) invalid("missing measurement boundary")
-    if (count == 0) invalid("contains no measurement rows")
+    if (count == 0 && allow_zero != "true") invalid("contains no measurement rows")
     printf "%.0f,%.0f,%.0f,%.0f,%.0f\n", count, baseline, maximum, sum_cpu_ns, sum_wall_ns > stats_file
   }
 ' "$csv"
 
 IFS=, read -r sample_count baseline_rss maximum_rss total_cpu_ns total_wall_ns <"$stats_file"
+if (( sample_count == 0 )); then
+  jq -n \
+    --argjson baselineRSSKiB "$baseline_rss" \
+    '{samples:0, baselineRSSKiB:$baselineRSSKiB,
+      maximumRSSKiB:$baselineRSSKiB, growthKiB:0,
+      averageCPUPercent:null, p95CPUPercent:null,
+      measurementDurationSeconds:0}'
+  exit 0
+fi
 average_cpu="$(cpu_percent_from_deltas "$total_cpu_ns" "$total_wall_ns")"
 cpu_p95="$(nearest_rank_percentile "$values_file" "$sample_count" 95)"
 growth=$((maximum_rss - baseline_rss))

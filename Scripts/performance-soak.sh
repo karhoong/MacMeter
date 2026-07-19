@@ -57,6 +57,7 @@ build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info
 pid=""
 caffeinate_pid=""
 finalized=false
+failure_kind="unexpected_error"
 failure_reason="unexpected error"
 baseline_rss=""
 maximum_rss=0
@@ -128,6 +129,21 @@ add_results() {
   mv "$evidence.tmp" "$evidence"
 }
 
+add_raw_csv_binding() {
+  local csv_sha256 csv_byte_count csv_file_name
+  csv_sha256="$(shasum -a 256 "$output" | awk '{print $1}')"
+  csv_byte_count="$(wc -c <"$output" | tr -d '[:space:]')"
+  csv_file_name="$output_file_name"
+  jq \
+    --arg csvFileName "$csv_file_name" \
+    --arg csvSHA256 "$csv_sha256" \
+    --argjson csvByteCount "$csv_byte_count" \
+    '. + {rawCSV:{formatVersion:1, fileName:$csvFileName,
+      sha256:$csvSHA256, byteCount:$csvByteCount}}' \
+    "$evidence" >"$evidence.tmp"
+  mv "$evidence.tmp" "$evidence"
+}
+
 write_completed_evidence() {
   local finished_at csv_sha256 csv_byte_count csv_file_name
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -173,21 +189,42 @@ compute_results() {
 
 write_failed_evidence() {
   local exit_code="$1"
-  local finished_at
+  local finished_at latest_rss_json baseline_rss_json maximum_rss_json growth_rss_json
   finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  latest_rss_json="${latest_rss:-null}"
+  baseline_rss_json="${baseline_rss:-null}"
+  if [[ -n "$baseline_rss" ]]; then
+    maximum_rss_json="$maximum_rss"
+    growth_rss_json="$((maximum_rss - baseline_rss))"
+  else
+    maximum_rss_json="null"
+    growth_rss_json="null"
+  fi
   write_base_evidence "failed"
   jq \
     --arg finishedAt "$finished_at" \
+    --arg failureKind "$failure_kind" \
     --arg failureReason "$failure_reason" \
     --argjson exitCode "$exit_code" \
-    '. + {finishedAt:$finishedAt, failureReason:$failureReason, exitCode:$exitCode}' \
+    --argjson samples "$sample_count" \
+    --argjson latestRSSKiB "$latest_rss_json" \
+    --argjson baselineRSSKiB "$baseline_rss_json" \
+    --argjson maximumRSSKiB "$maximum_rss_json" \
+    --argjson growthKiB "$growth_rss_json" \
+    '. + {finishedAt:$finishedAt, failureReason:$failureReason, exitCode:$exitCode,
+      failure:{kind:$failureKind, reason:$failureReason, exitCode:$exitCode,
+        measurements:{samples:$samples, latestRSSKiB:$latestRSSKiB,
+          baselineRSSKiB:$baselineRSSKiB, maximumRSSKiB:$maximumRSSKiB,
+          growthKiB:$growthKiB}}}' \
     "$evidence" >"$evidence.tmp"
   mv "$evidence.tmp" "$evidence"
   if compute_results; then add_results "partialResults"; fi
+  add_raw_csv_binding
 }
 
 fail() {
-  failure_reason="$1"
+  failure_kind="$1"
+  failure_reason="$2"
   echo "$failure_reason" >&2
   exit 1
 }
@@ -208,7 +245,7 @@ cleanup() {
   return "$exit_code"
 }
 trap cleanup EXIT
-trap 'failure_reason="interrupted"; exit 130' INT TERM
+trap 'failure_kind="interrupted"; failure_reason="interrupted"; exit 130' INT TERM
 
 caffeinate -dimsu -w "$$" >/dev/null 2>&1 &
 caffeinate_pid=$!
@@ -216,16 +253,21 @@ caffeinate_pid=$!
 pid=$!
 
 take_sample() {
-  local metrics
+  local metrics sampled_cpu_ns sampled_wall_ns sampled_rss
   if ! kill -0 "$caffeinate_pid" 2>/dev/null; then
-    fail "Sleep-prevention process exited during the performance soak"
+    fail "sleep_prevention" "Sleep-prevention process exited during the performance soak"
   fi
   if ! metrics="$("$metrics_binary" "$pid" 2>/dev/null)"; then
-    fail "MacMeter exited or process metrics became unavailable during the performance soak"
+    fail "metrics_unavailable" "MacMeter exited or process metrics became unavailable during the performance soak"
   fi
-  IFS=, read -r latest_cpu_ns latest_wall_ns <<<"$metrics"
-  latest_rss="$(ps -o rss= -p "$pid" | awk '{print $1}')"
-  if [[ -z "$latest_rss" ]]; then fail "MacMeter RSS became unavailable during the performance soak"; fi
+  IFS=, read -r sampled_cpu_ns sampled_wall_ns <<<"$metrics"
+  if ! sampled_rss="$(ps -o rss= -p "$pid" | awk '{print $1}')"; then
+    fail "rss_unavailable" "MacMeter RSS became unavailable during the performance soak"
+  fi
+  if [[ -z "$sampled_rss" ]]; then fail "rss_unavailable" "MacMeter RSS became unavailable during the performance soak"; fi
+  latest_cpu_ns="$sampled_cpu_ns"
+  latest_wall_ns="$sampled_wall_ns"
+  latest_rss="$sampled_rss"
 }
 
 mkdir -p "$(dirname "$output")" "$(dirname "$evidence")"
@@ -247,6 +289,9 @@ if (( warmup_seconds == 0 )); then
   baseline_rss="$latest_rss"
   maximum_rss="$latest_rss"
   printf '0,%s,0.000,0.000,0,0,boundary\n' "$latest_rss" >>"$output"
+  if (( maximum_rss > rss_limit_kib )); then
+    fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB at the measurement boundary"
+  fi
 else
   printf '0,%s,0.000,0.000,0,0,warmup\n' "$latest_rss" >>"$output"
 fi
@@ -279,11 +324,20 @@ while (( latest_wall_ns < finish_target_ns )); do
     maximum_rss="$latest_rss"
     cadence_index=0
     printf '%s,%s,%s,%s,%s,%s,boundary\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
+    if (( maximum_rss > rss_limit_kib )); then
+      fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB at the measurement boundary"
+    fi
   elif [[ "$measurement_started" == true ]]; then
     if (( latest_rss > maximum_rss )); then maximum_rss="$latest_rss"; fi
     printf '%s\n' "$interval_cpu" >>"$cpu_values_file"
     sample_count=$((sample_count + 1))
     printf '%s,%s,%s,%s,%s,%s,measurement\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
+    if (( maximum_rss > rss_limit_kib )); then
+      fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"
+    fi
+    if (( maximum_rss - baseline_rss > growth_limit_kib )); then
+      fail "rss_growth" "RSS growth failed: $((maximum_rss - baseline_rss))KiB > ${growth_limit_kib}KiB"
+    fi
   else
     printf '%s,%s,%s,%s,%s,%s,warmup\n' "$elapsed_seconds" "$latest_rss" "$interval_cpu" "$interval_seconds" "$cpu_delta_ns" "$wall_delta_ns" >>"$output"
   fi
@@ -292,24 +346,24 @@ while (( latest_wall_ns < finish_target_ns )); do
   previous_wall_ns="$latest_wall_ns"
 done
 
-if (( sample_count == 0 )); then fail "No post-warm-up samples were collected"; fi
+if (( sample_count == 0 )); then fail "no_samples" "No post-warm-up samples were collected"; fi
 
 compute_results
 echo "Performance soak: baseline=${baseline_rss}KiB max=${maximum_rss}KiB growth=${growth}KiB averageCPU=${average_cpu}% p95CPU=${cpu_p95}% duration=${measurement_duration_seconds}s"
 
 if (( maximum_rss > rss_limit_kib )); then
-  fail "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"
+  fail "rss_limit" "RSS limit failed: ${maximum_rss}KiB > ${rss_limit_kib}KiB after warm-up"
 fi
-if (( growth > growth_limit_kib )); then fail "RSS growth failed: ${growth}KiB > ${growth_limit_kib}KiB"; fi
+if (( growth > growth_limit_kib )); then fail "rss_growth" "RSS growth failed: ${growth}KiB > ${growth_limit_kib}KiB"; fi
 if ! awk -v cpu="$average_cpu" -v limit="$cpu_average_limit" 'BEGIN { exit !(cpu <= limit) }'; then
-  fail "Idle CPU limit failed: ${average_cpu}% > ${cpu_average_limit}%"
+  fail "cpu_average" "Idle CPU limit failed: ${average_cpu}% > ${cpu_average_limit}%"
 fi
 if ! awk -v cpu="$cpu_p95" -v limit="$cpu_p95_limit" 'BEGIN { exit !(cpu <= limit) }'; then
-  fail "Idle CPU p95 failed: ${cpu_p95}% > ${cpu_p95_limit}%"
+  fail "cpu_p95" "Idle CPU p95 failed: ${cpu_p95}% > ${cpu_p95_limit}%"
 fi
 
 write_completed_evidence
 if ! bash "$project_root/Scripts/verify-performance-csv.sh" "$evidence" "$output" >/dev/null; then
-  fail "Completed performance evidence did not match the raw CSV"
+  fail "evidence_mismatch" "Completed performance evidence did not match the raw CSV"
 fi
 finalized=true
