@@ -31,7 +31,9 @@ enum MenuBarPresentation {
         guard !enabledMetrics.isEmpty else { return [] }
         if enabledMetrics.count == MetricID.allCases.count,
            MetricID.allCases.allSatisfy(enabledMetrics.contains) {
-            return [[.network], [.cpu, .temperature, .battery]]
+            // The real MenuBarExtra status item clips vertically stacked label
+            // content, so all values must share one compact status-bar row.
+            return [[.network, .cpu, .temperature, .battery]]
         }
         return [enabledMetrics]
     }
@@ -125,17 +127,8 @@ struct MenuBarLabelView: View {
                     .fixedSize(horizontal: true, vertical: false)
             } else {
                 let rows = MenuBarPresentation.rows(for: settings.enabledMetrics)
-                if rows.count > 1 {
-                    VStack(spacing: -2) {
-                        ForEach(Array(rows.enumerated()), id: \.offset) { _, metrics in
-                            metricRow(metrics)
-                        }
-                    }
-                    .fixedSize(horizontal: true, vertical: true)
-                } else {
-                    metricRow(rows[0])
-                        .fixedSize(horizontal: true, vertical: false)
-                }
+                metricRow(rows[0])
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .font(menuBarFont)
@@ -155,11 +148,11 @@ struct MenuBarLabelView: View {
     }
 
     private var menuBarFont: Font {
-        .system(size: 8.5, weight: .medium, design: .monospaced)
+        .system(size: 8, weight: .medium, design: .monospaced)
     }
 
     private func metricRow(_ metrics: [MetricID]) -> some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 1) {
             ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
                 if index > 0 {
                     Text("|").foregroundStyle(.secondary).accessibilityHidden(true)

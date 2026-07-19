@@ -79,7 +79,6 @@ final class ViewRenderingTests: XCTestCase {
         let host = hostingController.view
         host.frame = NSRect(x: 0, y: 0, width: 120, height: 24)
         host.layoutSubtreeIfNeeded()
-        var singleMetricHeight: CGFloat = 0
         for mask in 1..<16 {
             setMetricMask(mask, settings: fixture.settings)
             RunLoop.main.run(until: Date().addingTimeInterval(0.01))
@@ -91,13 +90,8 @@ final class ViewRenderingTests: XCTestCase {
             XCTAssertEqual(constrained.width, ideal.width, accuracy: 1, "Selection mask \(mask) compressed horizontally")
             XCTAssertLessThanOrEqual(ideal.width, 180, "Selection mask \(mask) is too wide for compact display")
             XCTAssertLessThanOrEqual(ideal.height, 24, "Selection mask \(mask) is too tall for the menu bar")
-            if mask == 1 { singleMetricHeight = ideal.height }
             if mask == 15 {
-                XCTAssertGreaterThan(
-                    ideal.height,
-                    singleMetricHeight + 4,
-                    "All four metrics must use the requested two-line layout"
-                )
+                XCTAssertLessThanOrEqual(ideal.height, 16, "All four metrics must remain on one status-bar-safe line")
             }
         }
     }
@@ -118,7 +112,7 @@ final class ViewRenderingTests: XCTestCase {
 
         XCTAssertEqual(
             MenuBarPresentation.rows(for: MetricID.allCases),
-            [[.network], [.cpu, .temperature, .battery]]
+            [[.network, .cpu, .temperature, .battery]]
         )
     }
 
@@ -135,11 +129,12 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(MenuBarPresentation.network(network, unit: .MBps), "↑0.0↓0.5MB/s")
         XCTAssertEqual(
             [
+                MenuBarPresentation.network(network, unit: .MBps),
                 MenuBarPresentation.cpu(cpu, scale: .normalized),
                 MenuBarPresentation.temperature(temperature, unit: .celsius),
                 MenuBarPresentation.battery(battery)
             ].joined(separator: " | "),
-            "50% | 80°C | D 12W"
+            "↑0.0↓0.5MB/s | 50% | 80°C | D 12W"
         )
         XCTAssertEqual(MenuBarPresentation.temperature(temperature, unit: .fahrenheit), "176°F")
     }

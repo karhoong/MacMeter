@@ -16,7 +16,7 @@
 - [ ] Wi-Fi/Ethernet transitions do not create spikes.
 - [ ] VPN traffic is counted once through the physical interface.
 - [ ] Launch at Login survives logout/login and handles denied approval.
-- [ ] Compact two-line all-metric and five-second Cycle modes remain readable.
+- [ ] Compact single-line all-metric and five-second Cycle modes remain readable.
 - [ ] VoiceOver announces metric names, units, and full battery direction.
 - [ ] Light, dark, increased-text, auto-hidden, and constrained menu bars pass.
 
