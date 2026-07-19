@@ -7,8 +7,8 @@ enum MetricAccessibility {
         "CPU utilization \(MetricFormatting.percent(value))"
     }
 
-    static func temperature(_ value: Double) -> String {
-        "SoC temperature \(MetricFormatting.temperature(value))"
+    static func temperature(_ value: Double, unit: TemperatureUnit) -> String {
+        "SoC temperature \(MetricFormatting.temperature(value, unit: unit))"
     }
 
     static func network(_ reading: NetworkReading, unit: NetworkUnit) -> String {
@@ -23,6 +23,33 @@ enum MetricAccessibility {
 enum CycleActivityPolicy {
     static func shouldRun(mode: DisplayMode, enabledCount: Int) -> Bool {
         mode == .cycle && enabledCount > 0
+    }
+}
+
+enum MenuBarPresentation {
+    static func rows(for enabledMetrics: [MetricID]) -> [[MetricID]] {
+        guard !enabledMetrics.isEmpty else { return [] }
+        if enabledMetrics.count == MetricID.allCases.count,
+           MetricID.allCases.allSatisfy(enabledMetrics.contains) {
+            return [[.network], [.cpu, .temperature, .battery]]
+        }
+        return [enabledMetrics]
+    }
+
+    static func cpu(_ reading: CPUReading, scale: CPUScale) -> String {
+        MetricFormatting.percent(scale == .normalized ? reading.normalized : reading.summed)
+    }
+
+    static func temperature(_ reading: TemperatureReading, unit: TemperatureUnit) -> String {
+        MetricFormatting.temperature(reading.hottestCelsius, unit: unit, compact: true)
+    }
+
+    static func network(_ reading: NetworkReading, unit: NetworkUnit) -> String {
+        MetricFormatting.networkPair(reading, unit: unit)
+    }
+
+    static func battery(_ reading: BatteryPowerReading) -> String {
+        MetricFormatting.battery(reading)
     }
 }
 
@@ -95,21 +122,20 @@ struct MenuBarLabelView: View {
                     .accessibilityLabel("MacMeter. No metrics enabled")
             } else if settings.displayMode == .cycle {
                 metricView(settings.enabledMetrics[cycleController.index % settings.enabledMetrics.count], compact: true)
-                    .frame(minWidth: 72)
+                    .fixedSize(horizontal: true, vertical: false)
             } else {
-                HStack(spacing: settings.displayMode == .compact ? 2 : 3) {
-                    ForEach(Array(settings.enabledMetrics.enumerated()), id: \.element.id) { index, metric in
-                        if index > 0 && settings.displayMode == .default {
-                            Text("|").foregroundStyle(.secondary).accessibilityHidden(true)
+                let rows = MenuBarPresentation.rows(for: settings.enabledMetrics)
+                if rows.count > 1 {
+                    VStack(spacing: -2) {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { _, metrics in
+                            metricRow(metrics)
                         }
-                        metricView(metric, compact: settings.displayMode == .compact)
                     }
+                    .fixedSize(horizontal: true, vertical: true)
+                } else {
+                    metricRow(rows[0])
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                // MenuBarExtra can otherwise keep the width from its first metric
-                // update and compress later readings out of sight. The label must
-                // advertise its complete intrinsic width so Default always shows
-                // every enabled metric.
-                .fixedSize(horizontal: true, vertical: false)
             }
         }
         .font(menuBarFont)
@@ -129,8 +155,18 @@ struct MenuBarLabelView: View {
     }
 
     private var menuBarFont: Font {
-        let size: CGFloat = settings.displayMode == .compact ? 8.5 : 9.5
-        return .system(size: size, weight: .medium, design: .monospaced)
+        .system(size: 8.5, weight: .medium, design: .monospaced)
+    }
+
+    private func metricRow(_ metrics: [MetricID]) -> some View {
+        HStack(spacing: 2) {
+            ForEach(Array(metrics.enumerated()), id: \.element.id) { index, metric in
+                if index > 0 {
+                    Text("|").foregroundStyle(.secondary).accessibilityHidden(true)
+                }
+                metricView(metric, compact: true)
+            }
+        }
     }
 
     @ViewBuilder
@@ -139,28 +175,31 @@ struct MenuBarLabelView: View {
         case .cpu:
             if let reading = coordinator.cpu.value {
                 let value = settings.cpuScale == .normalized ? reading.normalized : reading.summed
-                Text("\(compact ? "C" : "CPU") \(MetricFormatting.percent(value))")
+                Text(MenuBarPresentation.cpu(reading, scale: settings.cpuScale))
                     .accessibilityLabel(MetricAccessibility.cpu(value))
             } else {
-                Text("\(compact ? "C" : "CPU") —").accessibilityLabel("CPU unavailable")
+                Text("—").accessibilityLabel("CPU unavailable")
             }
         case .temperature:
             if let reading = coordinator.temperature.value {
-                Text("\(compact ? "T" : "SoC") \(MetricFormatting.temperature(reading.hottestCelsius, compact: compact))")
-                    .accessibilityLabel(MetricAccessibility.temperature(reading.hottestCelsius))
+                Text(MenuBarPresentation.temperature(reading, unit: settings.temperatureUnit))
+                    .accessibilityLabel(MetricAccessibility.temperature(
+                        reading.hottestCelsius,
+                        unit: settings.temperatureUnit
+                    ))
             } else {
-                Text("\(compact ? "T" : "SoC") —").accessibilityLabel("SoC temperature unavailable")
+                Text("—").accessibilityLabel("SoC temperature unavailable")
             }
         case .network:
             if let reading = coordinator.network.value {
-                Text(MetricFormatting.networkPair(reading, unit: settings.networkUnit))
+                Text(MenuBarPresentation.network(reading, unit: settings.networkUnit))
                     .accessibilityLabel(MetricAccessibility.network(reading, unit: settings.networkUnit))
             } else {
-                Text("↓— ↑—").accessibilityLabel("Network speed unavailable")
+                Text("↑—↓—\(settings.networkUnit.menuLabel)").accessibilityLabel("Network speed unavailable")
             }
         case .battery:
             if let reading = coordinator.battery.value {
-                Text(MetricFormatting.battery(reading))
+                Text(MenuBarPresentation.battery(reading))
                     .foregroundStyle(color(for: reading.direction))
                     .accessibilityLabel(MetricAccessibility.battery(reading))
             } else {
@@ -170,10 +209,10 @@ struct MenuBarLabelView: View {
     }
 
     private func color(for direction: BatteryDirection) -> Color {
-        switch direction {
+        switch direction.colorRole {
         case .charging: return .green
         case .draining: return .red
-        case .idle: return .secondary
+        case .idle: return .blue
         }
     }
 
@@ -256,7 +295,10 @@ struct MeterPopoverView: View {
     private var temperatureCard: some View {
         MetricCard(title: "SoC Temperature", systemImage: "thermometer.medium") {
             if let reading = coordinator.temperature.value {
-                LabeledContent("Hottest", value: MetricFormatting.temperature(reading.hottestCelsius))
+                LabeledContent("Hottest", value: MetricFormatting.temperature(
+                    reading.hottestCelsius,
+                    unit: settings.temperatureUnit
+                ))
                 LabeledContent("Sensors", value: "\(reading.sensorCount)")
             } else {
                 UnavailableView(reason: coordinator.temperature.reason)
@@ -284,13 +326,21 @@ struct MeterPopoverView: View {
                     Spacer()
                     Text(MetricFormatting.battery(reading))
                         .font(.headline.monospacedDigit())
-                        .foregroundStyle(reading.direction == .charging ? .green : reading.direction == .draining ? .red : .secondary)
+                        .foregroundStyle(color(for: reading.direction))
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(MetricAccessibility.battery(reading))
             } else {
                 UnavailableView(reason: coordinator.battery.reason)
             }
+        }
+    }
+
+    private func color(for direction: BatteryDirection) -> Color {
+        switch direction.colorRole {
+        case .charging: return .green
+        case .draining: return .red
+        case .idle: return .blue
         }
     }
 }

@@ -130,14 +130,51 @@ enum NetworkUnit: String, Codable, CaseIterable, Identifiable {
     case Mbps
     case MBps
     var id: String { rawValue }
+
+    var menuLabel: String {
+        switch self {
+        case .Kbps: return "Kb/s"
+        case .KBps: return "KB/s"
+        case .Mbps: return "Mb/s"
+        case .MBps: return "MB/s"
+        }
+    }
+}
+
+enum TemperatureUnit: String, Codable, CaseIterable, Identifiable {
+    case celsius
+    case fahrenheit
+
+    var id: String { rawValue }
+    var symbol: String { self == .celsius ? "°C" : "°F" }
+    var title: String { self == .celsius ? "Celsius" : "Fahrenheit" }
+
+    func convert(celsius: Double) -> Double {
+        self == .celsius ? celsius : (celsius * 9 / 5) + 32
+    }
 }
 
 enum DisplayMode: String, Codable, CaseIterable, Identifiable {
     case compact
-    case `default`
     case cycle
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
+}
+
+enum BatteryColorRole: Equatable {
+    case charging
+    case draining
+    case idle
+}
+
+extension BatteryDirection {
+    var colorRole: BatteryColorRole {
+        switch self {
+        case .charging: return .charging
+        case .draining: return .draining
+        case .idle: return .idle
+        }
+    }
 }
 
 enum MetricID: String, CaseIterable, Identifiable {

@@ -34,6 +34,14 @@ struct MacMeterSettingsView: View {
                     ForEach(CPUScale.allCases) { scale in Text(scale.title).tag(scale) }
                 }
             }
+            Section("Temperature") {
+                Picker("Unit", selection: $settings.temperatureUnit) {
+                    ForEach(TemperatureUnit.allCases) { unit in
+                        Text("\(unit.title) (\(unit.symbol))").tag(unit)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
             Section("Network") {
                 Picker("Unit", selection: $settings.networkUnit) {
                     ForEach(NetworkUnit.allCases) { unit in Text(unit.rawValue).tag(unit) }
@@ -50,7 +58,7 @@ struct MacMeterSettingsView: View {
                 ForEach(DisplayMode.allCases) { mode in Text(mode.title).tag(mode) }
             }
             .pickerStyle(.radioGroup)
-            Text("Cycle mode rotates through enabled metrics every five seconds.")
+            Text("Compact shows every enabled metric. Cycle rotates through them every five seconds.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .formStyle(.grouped)

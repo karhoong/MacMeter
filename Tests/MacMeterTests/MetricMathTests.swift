@@ -54,10 +54,11 @@ final class MetricMathTests: XCTestCase {
             _ = MetricMath.validatedTemperature(temperature, record: record)
         }
         _ = MetricFormatting.temperature(55, compact: true, record: record)
-        _ = MetricFormatting.temperature(55, compact: false, record: record)
+        _ = MetricFormatting.temperature(55, unit: .fahrenheit, compact: false, record: record)
         for unit in NetworkUnit.allCases {
             _ = MetricFormatting.network(bytesPerSecond: 1_250, unit: unit, record: record)
         }
+        _ = MetricFormatting.network(bytesPerSecond: 1_250, unit: .MBps, fixedOneDecimal: true, record: record)
         _ = MetricFormatting.decimal(100.4, record: record)
         _ = MetricFormatting.decimal(30, record: record)
         _ = MetricFormatting.decimal(8.4, record: record)
@@ -165,13 +166,14 @@ final class MetricMathTests: XCTestCase {
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000, unit: .KBps), "1")
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000, unit: .Kbps), "8")
         let reading = NetworkReading(inboundBytesPerSecond: 1_000_000, outboundBytesPerSecond: 200_000, interfaces: ["en0"])
-        XCTAssertEqual(MetricFormatting.networkPair(reading, unit: .MBps), "↓1 ↑0.2 MBps")
+        XCTAssertEqual(MetricFormatting.networkPair(reading, unit: .MBps), "↑0.2↓1.0MB/s")
     }
 
     func testFormattingCoversRoundedCompactIntegerDecimalAndLargeValues() {
         XCTAssertEqual(MetricFormatting.percent(42.6), "43%")
         XCTAssertEqual(MetricFormatting.temperature(61.6), "62°C")
-        XCTAssertEqual(MetricFormatting.temperature(61.6, compact: true), "62°")
+        XCTAssertEqual(MetricFormatting.temperature(61.6, compact: true), "62°C")
+        XCTAssertEqual(MetricFormatting.temperature(61.6, unit: .fahrenheit), "143°F")
         XCTAssertEqual(MetricFormatting.decimal(100.4), "100")
         XCTAssertEqual(MetricFormatting.decimal(30), "30")
         XCTAssertEqual(MetricFormatting.decimal(8.44), "8.4")

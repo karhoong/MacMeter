@@ -23,10 +23,14 @@ enum MetricDecisionPath: String, CaseIterable {
     case temperatureRejectedHigh
     case temperatureCompact
     case temperatureFull
+    case temperatureCelsius
+    case temperatureFahrenheit
     case networkKbps
     case networkKBps
     case networkMbps
     case networkMBps
+    case networkVariableDecimal
+    case networkFixedDecimal
     case decimalLarge
     case decimalInteger
     case decimalFractional
@@ -174,15 +178,25 @@ enum MetricFormatting {
 
     static func temperature(
         _ value: Double,
+        unit: TemperatureUnit = .celsius,
         compact: Bool = false,
         record: ((MetricDecisionPath) -> Void)? = nil
     ) -> String {
+        let converted: Double
+        switch unit {
+        case .celsius:
+            record?(.temperatureCelsius)
+            converted = value
+        case .fahrenheit:
+            record?(.temperatureFahrenheit)
+            converted = unit.convert(celsius: value)
+        }
         if compact {
             record?(.temperatureCompact)
-            return "\(Int(value.rounded()))°"
+        } else {
+            record?(.temperatureFull)
         }
-        record?(.temperatureFull)
-        return "\(Int(value.rounded()))°C"
+        return "\(Int(converted.rounded()))\(unit.symbol)"
     }
 
     static func battery(_ reading: BatteryPowerReading) -> String {
@@ -192,6 +206,7 @@ enum MetricFormatting {
     static func network(
         bytesPerSecond: Double,
         unit: NetworkUnit,
+        fixedOneDecimal: Bool = false,
         record: ((MetricDecisionPath) -> Void)? = nil
     ) -> String {
         let converted: Double
@@ -209,11 +224,18 @@ enum MetricFormatting {
             record?(.networkMBps)
             converted = bytesPerSecond / 1_000_000
         }
+        if fixedOneDecimal {
+            record?(.networkFixedDecimal)
+            return String(format: "%.1f", converted)
+        }
+        record?(.networkVariableDecimal)
         return decimal(converted, record: record)
     }
 
     static func networkPair(_ reading: NetworkReading, unit: NetworkUnit) -> String {
-        "↓\(network(bytesPerSecond: reading.inboundBytesPerSecond, unit: unit)) ↑\(network(bytesPerSecond: reading.outboundBytesPerSecond, unit: unit)) \(unit.rawValue)"
+        let outgoing = network(bytesPerSecond: reading.outboundBytesPerSecond, unit: unit, fixedOneDecimal: true)
+        let incoming = network(bytesPerSecond: reading.inboundBytesPerSecond, unit: unit, fixedOneDecimal: true)
+        return "↑\(outgoing)↓\(incoming)\(unit.menuLabel)"
     }
 
     static func decimal(

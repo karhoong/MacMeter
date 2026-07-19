@@ -9,6 +9,7 @@ final class SettingsStore: ObservableObject {
         static let networkEnabled = "metrics.network.enabled"
         static let batteryEnabled = "metrics.battery.enabled"
         static let cpuScale = "metrics.cpu.scale"
+        static let temperatureUnit = "metrics.temperature.unit"
         static let networkUnit = "metrics.network.unit"
         static let displayMode = "appearance.mode"
         static let updateInterval = "general.updateInterval"
@@ -21,6 +22,7 @@ final class SettingsStore: ObservableObject {
     @Published var networkEnabled: Bool { didSet { defaults.set(networkEnabled, forKey: Key.networkEnabled) } }
     @Published var batteryEnabled: Bool { didSet { defaults.set(batteryEnabled, forKey: Key.batteryEnabled) } }
     @Published var cpuScale: CPUScale { didSet { defaults.set(cpuScale.rawValue, forKey: Key.cpuScale) } }
+    @Published var temperatureUnit: TemperatureUnit { didSet { defaults.set(temperatureUnit.rawValue, forKey: Key.temperatureUnit) } }
     @Published var networkUnit: NetworkUnit { didSet { defaults.set(networkUnit.rawValue, forKey: Key.networkUnit) } }
     @Published var displayMode: DisplayMode { didSet { defaults.set(displayMode.rawValue, forKey: Key.displayMode) } }
     @Published var updateInterval: TimeInterval { didSet { defaults.set(updateInterval, forKey: Key.updateInterval) } }
@@ -32,10 +34,15 @@ final class SettingsStore: ObservableObject {
         networkEnabled = defaults.object(forKey: Key.networkEnabled) as? Bool ?? true
         batteryEnabled = defaults.object(forKey: Key.batteryEnabled) as? Bool ?? true
         cpuScale = CPUScale(rawValue: defaults.string(forKey: Key.cpuScale) ?? "") ?? .normalized
+        temperatureUnit = TemperatureUnit(rawValue: defaults.string(forKey: Key.temperatureUnit) ?? "") ?? .celsius
         networkUnit = NetworkUnit(rawValue: defaults.string(forKey: Key.networkUnit) ?? "") ?? .MBps
-        displayMode = DisplayMode(rawValue: defaults.string(forKey: Key.displayMode) ?? "") ?? .default
+        let storedDisplayMode = defaults.string(forKey: Key.displayMode)
+        displayMode = DisplayMode(rawValue: storedDisplayMode ?? "") ?? .compact
         let storedInterval = defaults.double(forKey: Key.updateInterval)
         updateInterval = [1.0, 2.0, 5.0, 10.0].contains(storedInterval) ? storedInterval : 2.0
+        if storedDisplayMode == "default" {
+            defaults.set(DisplayMode.compact.rawValue, forKey: Key.displayMode)
+        }
     }
 
     var enabledMetrics: [MetricID] {

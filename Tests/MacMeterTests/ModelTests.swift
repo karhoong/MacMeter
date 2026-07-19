@@ -34,11 +34,15 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(BatteryDirection.draining.spokenLabel, "Draining")
         XCTAssertEqual(BatteryDirection.idle.shortLabel, "—")
         XCTAssertEqual(BatteryDirection.idle.spokenLabel, "Idle")
+        XCTAssertEqual(BatteryDirection.charging.colorRole, .charging)
+        XCTAssertEqual(BatteryDirection.draining.colorRole, .draining)
+        XCTAssertEqual(BatteryDirection.idle.colorRole, .idle)
     }
 
     func testMetricAccessibilityLabelsContainNamesUnitsAndDirection() {
         XCTAssertEqual(MetricAccessibility.cpu(42), "CPU utilization 42%")
-        XCTAssertEqual(MetricAccessibility.temperature(61), "SoC temperature 61°C")
+        XCTAssertEqual(MetricAccessibility.temperature(61, unit: .celsius), "SoC temperature 61°C")
+        XCTAssertEqual(MetricAccessibility.temperature(61, unit: .fahrenheit), "SoC temperature 142°F")
         let network = NetworkReading(inboundBytesPerSecond: 1_000_000, outboundBytesPerSecond: 250_000, interfaces: ["en0"])
         XCTAssertEqual(MetricAccessibility.network(network, unit: .Mbps), "Network inbound 8 Mbps, outbound 2 Mbps")
         XCTAssertEqual(
@@ -56,7 +60,17 @@ final class ModelTests: XCTestCase {
         XCTAssertEqual(CPUScale.summed.title, "All cores (n×100%)")
         XCTAssertEqual(CPUScale.normalized.id, "normalized")
         XCTAssertEqual(NetworkUnit.MBps.id, "MBps")
-        XCTAssertEqual(DisplayMode.default.title, "Default")
+        XCTAssertEqual(NetworkUnit.MBps.menuLabel, "MB/s")
+        XCTAssertEqual(NetworkUnit.Mbps.menuLabel, "Mb/s")
+        XCTAssertEqual(NetworkUnit.KBps.menuLabel, "KB/s")
+        XCTAssertEqual(NetworkUnit.Kbps.menuLabel, "Kb/s")
+        XCTAssertEqual(TemperatureUnit.celsius.symbol, "°C")
+        XCTAssertEqual(TemperatureUnit.fahrenheit.symbol, "°F")
+        XCTAssertEqual(TemperatureUnit.celsius.title, "Celsius")
+        XCTAssertEqual(TemperatureUnit.fahrenheit.title, "Fahrenheit")
+        XCTAssertEqual(TemperatureUnit.celsius.convert(celsius: 100), 100)
+        XCTAssertEqual(TemperatureUnit.fahrenheit.convert(celsius: 100), 212)
+        XCTAssertEqual(DisplayMode.allCases, [.compact, .cycle])
         XCTAssertEqual(DisplayMode.compact.id, "compact")
         XCTAssertEqual(MetricID.temperature.id, "temperature")
     }

@@ -14,8 +14,9 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertTrue(settings.networkEnabled)
         XCTAssertTrue(settings.batteryEnabled)
         XCTAssertEqual(settings.cpuScale, .normalized)
+        XCTAssertEqual(settings.temperatureUnit, .celsius)
         XCTAssertEqual(settings.networkUnit, .MBps)
-        XCTAssertEqual(settings.displayMode, .default)
+        XCTAssertEqual(settings.displayMode, .compact)
         XCTAssertEqual(settings.updateInterval, 2)
     }
 
@@ -30,6 +31,7 @@ final class SettingsStoreTests: XCTestCase {
         settings?.networkEnabled = false
         settings?.batteryEnabled = false
         settings?.cpuScale = .summed
+        settings?.temperatureUnit = .fahrenheit
         settings?.networkUnit = .Kbps
         settings?.displayMode = .cycle
         settings?.updateInterval = 5
@@ -41,9 +43,22 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertFalse(restored.networkEnabled)
         XCTAssertFalse(restored.batteryEnabled)
         XCTAssertEqual(restored.cpuScale, .summed)
+        XCTAssertEqual(restored.temperatureUnit, .fahrenheit)
         XCTAssertEqual(restored.networkUnit, .Kbps)
         XCTAssertEqual(restored.displayMode, .cycle)
         XCTAssertEqual(restored.updateInterval, 5)
+    }
+
+    func testRemovedDefaultModeMigratesToCompact() {
+        let suite = "MacMeterTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("default", forKey: "appearance.mode")
+
+        let settings = SettingsStore(defaults: defaults)
+
+        XCTAssertEqual(settings.displayMode, .compact)
+        XCTAssertEqual(defaults.string(forKey: "appearance.mode"), "compact")
     }
 
     func testEnabledMetricOrderIsStable() {

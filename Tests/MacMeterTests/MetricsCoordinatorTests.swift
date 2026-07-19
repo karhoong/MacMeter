@@ -267,7 +267,6 @@ final class MetricsCoordinatorTests: XCTestCase {
 
     func testCycleActivityPolicyStopsInactiveAndEmptyModes() {
         XCTAssertFalse(CycleActivityPolicy.shouldRun(mode: .compact, enabledCount: 4))
-        XCTAssertFalse(CycleActivityPolicy.shouldRun(mode: .default, enabledCount: 4))
         XCTAssertFalse(CycleActivityPolicy.shouldRun(mode: .cycle, enabledCount: 0))
         XCTAssertTrue(CycleActivityPolicy.shouldRun(mode: .cycle, enabledCount: 1))
     }
