@@ -102,5 +102,6 @@ jq -e \
 rg -q '"\$observer_tool" -w -nP -a -p "\$app_pid" -i -FpcfPnT' "$project_root/Scripts/runtime-privacy-evidence.sh"
 rg -q 'kill -0 "\$app_pid"' "$project_root/Scripts/runtime-privacy-evidence.sh"
 rg -q -- '-metrics.network.enabled YES' "$project_root/Scripts/runtime-privacy-evidence.sh"
+rg -q 'elapsed >= requested_duration && samples >= requested_duration' "$project_root/Scripts/runtime-privacy-evidence.sh"
 
 echo "Runtime privacy evidence checks passed"

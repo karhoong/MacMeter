@@ -126,7 +126,7 @@ while :; do
 
   current_epoch="$(date -u +%s)"
   elapsed=$((current_epoch - started_epoch))
-  if ((elapsed >= requested_duration)); then break; fi
+  if ((elapsed >= requested_duration && samples >= requested_duration)); then break; fi
   sleep "$sample_interval"
 done
 
