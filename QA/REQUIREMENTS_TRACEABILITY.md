@@ -38,8 +38,8 @@ Status meanings: **Verified** has current automated or physical evidence; **Part
 | PRIV-01 | No telemetry, outbound requests, or listening sockets | Verified | Source/framework gate plus `Scripts/runtime-privacy-evidence.sh`; every QA Release build generates ignored `QA/latest-runtime-privacy.json`, bound to commit/dirty state, artifact SHA-256, version/build, hardware, timestamp, observer implementation/tool, and a fail-closed 10-second exact-PID socket observation with all providers enabled at the default two-second refresh |
 | VER-01 | Start/remain 0.x; only owner command `pass` authorizes 1.0.0 | Verified | The owner explicitly issued `pass` on 2026-07-19; Xcode and fallback version authorities now declare `1.0.1 (1)`. The policy permits approved `1.0.x` patches and rejects unapproved, malformed, or unsupported minor versions. |
 | HW-01 | M1/M2 laptop, M4 Max, no-battery desktop acceptance matrix | Partial | M4 Max automated/live evidence complete; other two machines unavailable in current workspace |
-| PM-01 | Development → QA → PM rejection/fix loop | `1.0.1` rerun pending | Fresh exact-artifact QA and PM review are required before publishing the icon-bearing patch. |
+| PM-01 | Development → QA → PM rejection/fix loop | Verified | Dedicated QA returned **GREEN** and the product-manager reviewer returned **APPROVE** for the icon-bearing `1.0.1` source-publication candidate. |
 
 ## Current completion boundary
 
-All implementation requirements and the locally automatable M4 checks have evidence for the icon-bearing `1.0.1` patch. External-machine, signing/notarization, accessibility, and elapsed soak rows remain separately identified rather than being represented as completed.
+All implementation requirements and the locally automatable M4 checks have evidence for the icon-bearing `1.0.1` patch, and both requested review gates approved source publication. External-machine, signing/notarization, accessibility, and elapsed soak rows remain separately identified rather than being represented as completed.

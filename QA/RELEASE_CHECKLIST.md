@@ -31,6 +31,6 @@
 
 ## Authority
 
-- [ ] QA readiness recorded for `1.0.1`.
-- [ ] Product-manager readiness recorded for `1.0.1`.
+- [x] QA readiness recorded for `1.0.1`.
+- [x] Product-manager readiness recorded for `1.0.1`.
 - [x] Owner explicitly said **pass** and authorized promotion to `1.0.0`.
