@@ -20,7 +20,7 @@ Status meanings: **Verified** has current automated or physical evidence; **Part
 | DISP-01 | Independent enable/disable; disabled providers stop polling | Verified | Settings and coordinator provider-count tests |
 | DISP-02 | Compact, Default zones, Cycle every 5 seconds | Verified automated | Mode × all 16 metric combinations render matrix; live five-cycle p95 gate |
 | DISP-03 | Empty selection retains reachable gauge | Verified | All-disabled render coverage and explicit accessibility label |
-| POP-01 | Click opens full readings, core rows, explanations, timestamp, Settings, version and Quit | Verified implementation/render | `MeterPopoverView` visibly renders the shared version/build label; exact label and popover render tests; direct menu interaction remains manual |
+| POP-01 | Click opens full readings, core rows, explanations, timestamp, Settings, version and Quit | Verified implementation/render; patched preview retest pending | `MeterPopoverView` visibly renders the shared version/build label. Settings uses a retained native `NSWindow` action rather than a fragile responder-chain selector; tests prove visible open, reuse, red-close/reopen, and shared state. Direct menu interaction remains manual. |
 | SET-01 | Metrics, CPU convention, network unit, appearance, 1/2/5/10 refresh, login, About/privacy | Verified | `MacMeterSettingsView`, defaults/persistence and rendering tests |
 | SET-02 | Immediate `UserDefaults` persistence with specified defaults | Verified | `SettingsStoreTests` |
 | LOGIN-01 | `SMAppService.mainApp`, approval/denied/not-found states | Verified in isolation; installed flow pending | Injected service tests; signed-installed logout/login requires release artifact |

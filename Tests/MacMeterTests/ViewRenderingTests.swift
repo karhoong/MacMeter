@@ -14,6 +14,43 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(version.displayLabel, "Version 0.1.0 (1)")
     }
 
+    func testSettingsWindowControllerShowsAndReusesNativeWindow() throws {
+        _ = NSApplication.shared
+        let suite = "MacMeterSettingsWindowTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults)
+        let loginItem = LoginItemManager()
+        var activationCount = 0
+        let controller = SettingsWindowController(
+            settings: settings,
+            loginItem: loginItem,
+            activateApplication: { activationCount += 1 }
+        )
+        defer { controller.close() }
+
+        controller.show()
+        let firstWindow = try XCTUnwrap(controller.window)
+        XCTAssertTrue(firstWindow.isVisible)
+        XCTAssertEqual(firstWindow.title, "MacMeter Settings")
+        XCTAssertEqual(firstWindow.identifier?.rawValue, "MacMeter.Settings")
+        XCTAssertEqual(activationCount, 1)
+
+        controller.show()
+        XCTAssertTrue(firstWindow === controller.window)
+        XCTAssertEqual(activationCount, 2)
+
+        firstWindow.performClose(nil)
+        XCTAssertFalse(firstWindow.isVisible)
+        controller.show()
+        XCTAssertTrue(firstWindow.isVisible)
+        XCTAssertTrue(firstWindow === controller.window)
+        XCTAssertEqual(activationCount, 3)
+
+        controller.close()
+        XCTAssertFalse(firstWindow.isVisible)
+    }
+
     func testMenuBarModesAndMetricCombinationsRender() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }

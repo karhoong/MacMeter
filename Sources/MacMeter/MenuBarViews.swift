@@ -180,6 +180,7 @@ struct MeterPopoverView: View {
     @ObservedObject var coordinator: MetricsCoordinator
     @ObservedObject var settings: SettingsStore
     var appVersion: AppVersionInfo = .current
+    var openSettings: () -> Void = {}
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -209,10 +210,7 @@ struct MeterPopoverView: View {
                     Text("Waiting for data").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Settings…") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    NSApp.activate(ignoringOtherApps: true)
-                }
+                Button("Settings…", action: openSettings)
                 Button("Quit") { NSApp.terminate(nil) }
             }
         }
