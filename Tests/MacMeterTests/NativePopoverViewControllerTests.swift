@@ -30,6 +30,20 @@ final class NativePopoverViewControllerTests: XCTestCase {
         XCTAssertEqual(try value(in: root, metric: .network, name: "Outbound"), "0.4 MBps")
         XCTAssertEqual(try value(in: root, metric: .network, name: "Interfaces"), "en0, en1")
         XCTAssertEqual(try value(in: root, metric: .battery, name: "Power"), "D 8.4W")
+        XCTAssertEqual(
+            try label(
+                in: root,
+                identifier: NativePopoverViewController.Identifier.value(.cpu, "Overall")
+            ).textColor,
+            MetricStatusPalette.cpu(normalizedPercent: 43)
+        )
+        XCTAssertEqual(
+            try label(
+                in: root,
+                identifier: NativePopoverViewController.Identifier.value(.temperature, "Hottest")
+            ).textColor,
+            MetricStatusPalette.temperature(celsius: 55)
+        )
 
         let formatter = DateFormatter()
         formatter.dateStyle = .none
@@ -49,6 +63,14 @@ final class NativePopoverViewControllerTests: XCTestCase {
             XCTAssertEqual(row.identifier?.rawValue, NativePopoverViewController.Identifier.coreRow(id))
             XCTAssertEqual(row.kindLabel.stringValue, kind)
             XCTAssertEqual(row.valueLabel.stringValue, utilization)
+            let utilizationValue = try XCTUnwrap(Double(utilization.dropLast()))
+            let actualColor = try XCTUnwrap(row.valueLabel.textColor?.usingColorSpace(.sRGB))
+            let expectedColor = try XCTUnwrap(
+                MetricStatusPalette.cpu(normalizedPercent: utilizationValue).usingColorSpace(.sRGB)
+            )
+            XCTAssertEqual(actualColor.redComponent, expectedColor.redComponent, accuracy: 0.01)
+            XCTAssertEqual(actualColor.greenComponent, expectedColor.greenComponent, accuracy: 0.01)
+            XCTAssertEqual(actualColor.blueComponent, expectedColor.blueComponent, accuracy: 0.01)
             XCTAssertEqual(row.accessibilityLabel(), accessibility)
         }
         XCTAssertEqual(controller.coreRowView(for: 0)?.kindLabel.accessibilityLabel(), "Efficiency")
@@ -311,6 +333,13 @@ final class NativePopoverViewControllerTests: XCTestCase {
             root.cacheDisplay(in: root.bounds, to: representation)
             XCTAssertGreaterThan(representation.pixelsWide, 0)
             XCTAssertGreaterThan(representation.pixelsHigh, 0)
+            if let captureDirectory = ProcessInfo.processInfo.environment["MACMETER_DESIGN_CAPTURE_DIR"] {
+                let directory = URL(fileURLWithPath: captureDirectory, isDirectory: true)
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                let appearance = appearanceName == .darkAqua ? "dark" : "light"
+                let data = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+                try data.write(to: directory.appendingPathComponent("popover-\(appearance).png"))
+            }
         }
     }
 

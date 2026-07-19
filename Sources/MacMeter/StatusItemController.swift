@@ -138,10 +138,18 @@ enum StatusItemLabelBuilder {
         switch metric {
         case .cpu:
             guard let reading = coordinator.cpu.value else { return attributed("—", color: Palette.secondary, typography: typography) }
-            return attributed(MenuBarPresentation.cpu(reading, scale: settings.cpuScale), color: Palette.primary, typography: typography)
+            return attributed(
+                MenuBarPresentation.cpu(reading, scale: settings.cpuScale),
+                color: MetricStatusPalette.cpu(normalizedPercent: reading.normalized),
+                typography: typography
+            )
         case .temperature:
             guard let reading = coordinator.temperature.value else { return attributed("—", color: Palette.secondary, typography: typography) }
-            return attributed(MenuBarPresentation.temperature(reading, unit: settings.temperatureUnit), color: Palette.primary, typography: typography)
+            return attributed(
+                MenuBarPresentation.temperature(reading, unit: settings.temperatureUnit),
+                color: MetricStatusPalette.temperature(celsius: reading.hottestCelsius),
+                typography: typography
+            )
         case .network:
             guard let reading = coordinator.network.value else {
                 return attributed("↑— ↓—\(settings.networkUnit.menuLabel)", color: Palette.secondary, typography: typography)

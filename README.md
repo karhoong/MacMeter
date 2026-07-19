@@ -26,6 +26,7 @@ Intel Macs and macOS versions earlier than 13 are not supported.
 - Per-core utilization in the details popover
 - Runtime Performance/Efficiency core classification on Apple Silicon
 - Both normalized and summed totals remain available in the popover
+- Progressive green, yellow, orange, and red emphasis makes rising utilization easy to scan
 
 ### Temperature
 
@@ -33,6 +34,7 @@ Intel Macs and macOS versions earlier than 13 are not supported.
 - Uses runtime-discovered `SOC MTR Temp` sensors when available
 - Falls back to read-only AppleSMC CPU/GPU die sensors on supported systems
 - Displays `—` instead of substituting unrelated or stale temperature data
+- Progressive green, yellow, orange, and red emphasis communicates increasing thermal pressure
 
 ### Network
 
@@ -53,7 +55,7 @@ Intel Macs and macOS versions earlier than 13 are not supported.
 ### Display and configuration
 
 - Enable or disable CPU, temperature, network, and battery independently
-- Compact mode (default): all selected metrics stay visible; four metrics use:
+- Compact mode (default): all selected metrics stay visible in two rows whenever more than one metric is enabled. Network always owns the top row; without Network, CPU and temperature lead while battery power uses the second row. Four metrics use:
 
   ```text
   ↑0.0 ↓0.5MB/s
@@ -66,6 +68,7 @@ Intel Macs and macOS versions earlier than 13 are not supported.
 - Refresh interval choices of 1, 2, 5, or 10 seconds; default is 2 seconds
 - Launch at Login through `SMAppService.mainApp`
 - Native Settings window with Metrics, Appearance, General, and About sections
+- Icon-led metric cards and clear spacing in both the details popover and Settings
 - Settings persist immediately in `UserDefaults`
 - Clicking the menu-bar item opens full readings, per-core CPU rows, availability explanations, last-update time, Settings, version, and Quit
 
@@ -135,13 +138,7 @@ Requirement traceability and the manual/physical validation checklist live in:
 - `QA/RELEASE_CHECKLIST.md`
 - `QA/AUTOMATED_RESULTS.md`
 
-The long-duration performance harness is:
-
-```sh
-bash Scripts/performance-soak.sh
-```
-
-Its release profile performs a 30-minute warm-up followed by a 24-hour measurement and verifies CPU, RSS, memory growth, cadence, evidence hashes, the exact clean commit, and the Release binary. Shortened environment overrides are useful for diagnostics but do not satisfy the release performance gate.
+Long-duration soak testing is no longer part of the release QA flow. The historical performance scripts remain in the repository for optional diagnostics only.
 
 ## Signed and notarized DMG
 
@@ -161,12 +158,12 @@ The script builds, signs with the hardened runtime, verifies the signature, crea
 - `Sources/MacMeter` — application, providers, coordinator, settings, and native AppKit UI
 - `Sources/MacMeterSensors` — read-only Objective-C sensor bridge
 - `Tests/MacMeterTests` — deterministic, UI, integration, and live-hardware tests
-- `Scripts` — QA, privacy, timing, performance, version-policy, and packaging tools
+- `Scripts` — QA, privacy, timing, optional diagnostics, version-policy, and packaging tools
 - `QA` — release checklist and requirement traceability
 
 ## Version
 
-The first owner-approved stable release was **1.0.0**. The current logo update is **1.0.1**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
+The first owner-approved stable release was **1.0.0**. The current interface refinement is **1.0.2**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
 
 ## License
 

@@ -33,6 +33,7 @@ final class NativeSettingsViewController: NSTabViewController {
         self.loginItem = loginItem
         self.appVersion = appVersion
         super.init(nibName: nil, bundle: nil)
+        title = "MacMeter Settings"
     }
 
     @available(*, unavailable)
@@ -42,13 +43,14 @@ final class NativeSettingsViewController: NSTabViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        title = "MacMeter Settings"
         tabStyle = .toolbar
-        preferredContentSize = NSSize(width: 520, height: 360)
+        preferredContentSize = NSSize(width: 560, height: 430)
         configureControls()
-        addTab(label: "Metrics", viewController: makeMetricsTab())
-        addTab(label: "Appearance", viewController: makeAppearanceTab())
-        addTab(label: "General", viewController: makeGeneralTab())
-        addTab(label: "About", viewController: makeAboutTab())
+        addTab(label: "Metrics", symbolName: "gauge.medium", viewController: makeMetricsTab())
+        addTab(label: "Appearance", symbolName: "paintbrush", viewController: makeAppearanceTab())
+        addTab(label: "General", symbolName: "gearshape", viewController: makeGeneralTab())
+        addTab(label: "About", symbolName: "info.circle", viewController: makeAboutTab())
         observeStores()
         syncControls()
     }
@@ -67,7 +69,13 @@ final class NativeSettingsViewController: NSTabViewController {
         for toggle in [cpuToggle, temperatureToggle, networkToggle, batteryToggle] {
             toggle.target = self
             toggle.action = #selector(metricToggleChanged(_:))
+            toggle.imagePosition = .imageLeading
+            toggle.imageHugsTitle = true
         }
+        cpuToggle.image = symbol("cpu")
+        temperatureToggle.image = symbol("thermometer.medium")
+        networkToggle.image = symbol("arrow.up.arrow.down")
+        batteryToggle.image = symbol("battery.75")
 
         CPUScale.allCases.forEach { cpuScalePopup.addItem(withTitle: $0.title) }
         cpuScalePopup.target = self
@@ -135,51 +143,67 @@ final class NativeSettingsViewController: NSTabViewController {
 
     private func makeMetricsTab() -> NSViewController {
         let stack = tabStack()
-        stack.addArrangedSubview(sectionLabel("Visible metrics"))
-        [cpuToggle, temperatureToggle, networkToggle, batteryToggle].forEach(stack.addArrangedSubview)
-        stack.addArrangedSubview(sectionSpacer())
-        stack.addArrangedSubview(sectionLabel("CPU"))
-        stack.addArrangedSubview(settingRow(label: "Menu-bar value", control: cpuScalePopup))
-        stack.addArrangedSubview(sectionLabel("Temperature"))
-        stack.addArrangedSubview(settingRow(label: "Unit", control: temperatureUnitControl))
-        stack.addArrangedSubview(sectionLabel("Network"))
-        stack.addArrangedSubview(settingRow(label: "Unit", control: networkUnitControl))
+        stack.addArrangedSubview(settingsCard(
+            title: "Visible metrics",
+            symbolName: "eye",
+            views: [cpuToggle, temperatureToggle, networkToggle, batteryToggle]
+        ))
+        stack.addArrangedSubview(settingsCard(
+            title: "Display values",
+            symbolName: "textformat.123",
+            views: [
+                settingRow(label: "CPU convention", control: cpuScalePopup),
+                settingRow(label: "Temperature", control: temperatureUnitControl),
+                settingRow(label: "Network unit", control: networkUnitControl)
+            ]
+        ))
         return tabController(stack: stack)
     }
 
     private func makeAppearanceTab() -> NSViewController {
         let stack = tabStack()
-        stack.addArrangedSubview(sectionLabel("Display mode"))
-        stack.addArrangedSubview(displayModeControl)
         let explanation = NSTextField(wrappingLabelWithString:
-            "Compact shows every enabled metric. Cycle rotates through them every five seconds."
+            "Compact keeps selected metrics in two balanced rows. Network stays on top; Cycle rotates one metric every five seconds."
         )
         explanation.textColor = .secondaryLabelColor
         explanation.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        stack.addArrangedSubview(explanation)
+        explanation.maximumNumberOfLines = 3
+        stack.addArrangedSubview(settingsCard(
+            title: "Menu bar layout",
+            symbolName: "rectangle.split.2x1",
+            views: [
+                settingRow(label: "Display mode", control: displayModeControl),
+                explanation
+            ]
+        ))
         return tabController(stack: stack)
     }
 
     private func makeGeneralTab() -> NSViewController {
         let stack = tabStack()
-        stack.addArrangedSubview(sectionLabel("Sampling"))
-        stack.addArrangedSubview(settingRow(label: "Update rate", control: updateRatePopup))
-        stack.addArrangedSubview(sectionSpacer())
-        stack.addArrangedSubview(sectionLabel("Startup"))
-        stack.addArrangedSubview(launchAtLoginToggle)
-        stack.addArrangedSubview(loginStatusLabel)
-        stack.addArrangedSubview(loginErrorLabel)
-        stack.addArrangedSubview(openLoginSettingsButton)
+        stack.addArrangedSubview(settingsCard(
+            title: "Sampling",
+            symbolName: "clock.arrow.circlepath",
+            views: [settingRow(label: "Update rate", control: updateRatePopup)]
+        ))
+        stack.addArrangedSubview(settingsCard(
+            title: "Startup",
+            symbolName: "power",
+            views: [launchAtLoginToggle, loginStatusLabel, loginErrorLabel, openLoginSettingsButton]
+        ))
         return tabController(stack: stack)
     }
 
     private func makeAboutTab() -> NSViewController {
-        let stack = tabStack(alignment: .centerX, spacing: 12)
-        let icon = NSImageView(image: NSImage(
-            systemSymbolName: "gauge.with.dots.needle.50percent",
-            accessibilityDescription: "MacMeter"
-        ) ?? NSImage())
-        icon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 48, weight: .regular)
+        let content = tabStack(alignment: .centerX, spacing: 12)
+        let icon = NSImageView(image: NSApp.applicationIconImage)
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.setAccessibilityLabel("MacMeter")
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 72),
+            icon.heightAnchor.constraint(equalToConstant: 72)
+        ])
         let name = NSTextField(labelWithString: "MacMeter")
         name.font = .boldSystemFont(ofSize: 20)
         let version = NSTextField(labelWithString: appVersion.displayLabel)
@@ -192,14 +216,40 @@ final class NativeSettingsViewController: NSTabViewController {
         let platform = NSTextField(labelWithString: "Apple Silicon · macOS 13+")
         platform.textColor = .secondaryLabelColor
         platform.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
-        [icon, name, version, privacy, platform].forEach(stack.addArrangedSubview)
+        [icon, name, version, privacy, platform].forEach(content.addArrangedSubview)
         privacy.widthAnchor.constraint(lessThanOrEqualToConstant: 420).isActive = true
-        return tabController(stack: stack, centerVertically: true)
+        let card = NSBox()
+        card.boxType = .custom
+        card.titlePosition = .noTitle
+        card.borderWidth = 0.5
+        card.borderColor = NSColor.separatorColor.withAlphaComponent(0.55)
+        card.cornerRadius = 10
+        card.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.60)
+        card.contentViewMargins = NSSize(width: 18, height: 18)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        card.contentView?.addSubview(content)
+        if let contentView = card.contentView {
+            NSLayoutConstraint.activate([
+                content.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+                content.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+                content.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor),
+                content.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
+                content.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor),
+                content.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
+            ])
+        }
+        card.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
+        card.widthAnchor.constraint(greaterThanOrEqualToConstant: 480).isActive = true
+        let stack = tabStack()
+        stack.addArrangedSubview(card)
+        return tabController(stack: stack)
     }
 
-    private func addTab(label: String, viewController: NSViewController) {
+    private func addTab(label: String, symbolName: String, viewController: NSViewController) {
         let item = NSTabViewItem(viewController: viewController)
         item.label = label
+        item.image = symbol(symbolName, pointSize: 16)
+        viewController.title = label
         addTabViewItem(item)
     }
 
@@ -220,13 +270,18 @@ final class NativeSettingsViewController: NSTabViewController {
             constraints.append(stack.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -18))
         }
         NSLayoutConstraint.activate(constraints)
+        if !centerVertically {
+            for arrangedView in stack.arrangedSubviews {
+                arrangedView.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+            }
+        }
         controller.view = container
         return controller
     }
 
     private func tabStack(
         alignment: NSLayoutConstraint.Attribute = .leading,
-        spacing: CGFloat = 8
+        spacing: CGFloat = 12
     ) -> NSStackView {
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -237,15 +292,62 @@ final class NativeSettingsViewController: NSTabViewController {
 
     private func settingRow(label: String, control: NSView) -> NSStackView {
         let title = NSTextField(labelWithString: label)
-        title.widthAnchor.constraint(equalToConstant: 130).isActive = true
+        title.textColor = .secondaryLabelColor
+        title.widthAnchor.constraint(equalToConstant: 135).isActive = true
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let row = NSStackView(views: [title, spacer, control])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
-        row.widthAnchor.constraint(greaterThanOrEqualToConstant: 450).isActive = true
+        row.widthAnchor.constraint(greaterThanOrEqualToConstant: 440).isActive = true
         return row
+    }
+
+    private func settingsCard(title: String, symbolName: String, views: [NSView]) -> NSBox {
+        let card = NSBox()
+        card.boxType = .custom
+        card.titlePosition = .noTitle
+        card.borderWidth = 0.5
+        card.borderColor = NSColor.separatorColor.withAlphaComponent(0.55)
+        card.cornerRadius = 10
+        card.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.60)
+        card.contentViewMargins = NSSize(width: 14, height: 12)
+
+        let icon = NSImageView(image: symbol(symbolName, pointSize: 14))
+        icon.contentTintColor = .controlAccentColor
+        icon.setAccessibilityElement(false)
+        let heading = NSTextField(labelWithString: title)
+        heading.font = .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        let header = NSStackView(views: [icon, heading])
+        header.orientation = .horizontal
+        header.alignment = .centerY
+        header.spacing = 7
+
+        let content = NSStackView()
+        content.orientation = .vertical
+        content.alignment = .leading
+        content.spacing = 10
+        content.addArrangedSubview(header)
+        views.forEach(content.addArrangedSubview)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        card.contentView?.addSubview(content)
+        if let contentView = card.contentView {
+            NSLayoutConstraint.activate([
+                content.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+                content.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+                content.topAnchor.constraint(equalTo: contentView.topAnchor),
+                content.bottomAnchor.constraint(equalTo: contentView.bottomAnchor)
+            ])
+        }
+        return card
+    }
+
+    private func symbol(_ name: String, pointSize: CGFloat = 13) -> NSImage {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+        return image.withSymbolConfiguration(
+            NSImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
+        ) ?? image
     }
 
     private func sectionLabel(_ title: String) -> NSTextField {

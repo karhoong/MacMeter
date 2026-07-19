@@ -44,7 +44,16 @@ final class ViewRenderingTests: XCTestCase {
 
         controller.show()
         XCTAssertTrue(firstWindow === controller.window)
+        XCTAssertEqual(firstWindow.title, "MacMeter Settings")
         XCTAssertEqual(activationCount, 2)
+
+        if let settingsController = firstHost as? NativeSettingsViewController {
+            for index in settingsController.tabViewItems.indices {
+                settingsController.selectedTabViewItemIndex = index
+                controller.show()
+                XCTAssertEqual(firstWindow.title, "MacMeter Settings")
+            }
+        }
 
         firstWindow.performClose(nil)
         XCTAssertFalse(firstWindow.isVisible)
@@ -53,7 +62,10 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertTrue(firstWindow.isVisible)
         XCTAssertTrue(firstWindow === controller.window)
         XCTAssertTrue(firstHost === controller.window?.contentViewController)
-        XCTAssertEqual(activationCount, 3)
+        XCTAssertEqual(
+            activationCount,
+            3 + ((firstHost as? NativeSettingsViewController)?.tabViewItems.count ?? 0)
+        )
 
         for _ in 0..<25 {
             controller.close()
@@ -74,7 +86,9 @@ final class ViewRenderingTests: XCTestCase {
         let loginManager = LoginItemManager(service: loginService)
         let controller = NativeSettingsViewController(settings: settings, loginItem: loginManager)
         _ = controller.view
+        XCTAssertEqual(controller.title, "MacMeter Settings")
         XCTAssertEqual(controller.tabViewItems.map(\.label), ["Metrics", "Appearance", "General", "About"])
+        XCTAssertTrue(controller.tabViewItems.allSatisfy { $0.image != nil })
 
         let metricsView = try XCTUnwrap(controller.tabViewItems[0].viewController?.view)
         let metricToggles: [(String, @MainActor () -> Bool)] = [
@@ -170,6 +184,14 @@ final class ViewRenderingTests: XCTestCase {
                 root.cacheDisplay(in: root.bounds, to: representation)
                 XCTAssertGreaterThan(representation.pixelsWide, 0)
                 XCTAssertGreaterThan(representation.pixelsHigh, 0)
+                if let captureDirectory = ProcessInfo.processInfo.environment["MACMETER_DESIGN_CAPTURE_DIR"] {
+                    let directory = URL(fileURLWithPath: captureDirectory, isDirectory: true)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let appearance = appearanceName == .darkAqua ? "dark" : "light"
+                    let tab = controller.tabViewItems[index].label.lowercased()
+                    let data = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+                    try data.write(to: directory.appendingPathComponent("settings-\(tab)-\(appearance).png"))
+                }
             }
         }
     }
@@ -265,15 +287,45 @@ final class ViewRenderingTests: XCTestCase {
             let flattened = rows.flatMap { $0 }
             XCTAssertEqual(flattened.count, enabled.count, "Selection mask \(mask) duplicated or omitted a metric")
             XCTAssertEqual(Set(flattened), Set(enabled), "Selection mask \(mask) changed selected metrics")
-            if mask != 15 {
-                XCTAssertEqual(flattened, enabled, "Selection mask \(mask) changed metric order")
+            if enabled.count == 1 {
+                XCTAssertEqual(rows, [enabled])
+            } else {
+                XCTAssertEqual(rows.count, 2, "Selection mask \(mask) should use exactly two rows")
+            }
+            if enabled.contains(.network), enabled.count > 1 {
+                XCTAssertEqual(rows[0], [.network], "Network must own the top row for mask \(mask)")
             }
         }
 
+        XCTAssertEqual(MenuBarPresentation.rows(for: [.cpu, .temperature]), [[.cpu], [.temperature]])
+        XCTAssertEqual(
+            MenuBarPresentation.rows(for: [.cpu, .temperature, .battery]),
+            [[.cpu, .temperature], [.battery]]
+        )
+        XCTAssertEqual(MenuBarPresentation.rows(for: [.cpu, .battery]), [[.cpu], [.battery]])
         XCTAssertEqual(
             MenuBarPresentation.rows(for: MetricID.allCases),
             [[.network], [.cpu, .temperature, .battery]]
         )
+    }
+
+    func testCPUAndTemperatureColorsProgressFromSafeToCritical() throws {
+        XCTAssertEqual(MetricStatusPalette.cpu(normalizedPercent: 0), MetricStatusPalette.safe)
+        XCTAssertEqual(MetricStatusPalette.cpu(normalizedPercent: 45), MetricStatusPalette.safe)
+        XCTAssertEqual(MetricStatusPalette.cpu(normalizedPercent: 100), MetricStatusPalette.critical)
+        XCTAssertEqual(MetricStatusPalette.temperature(celsius: 40), MetricStatusPalette.safe)
+        XCTAssertEqual(MetricStatusPalette.temperature(celsius: 100), MetricStatusPalette.critical)
+
+        let cpuMiddle = try XCTUnwrap(
+            MetricStatusPalette.cpu(normalizedPercent: 55).usingColorSpace(.sRGB)
+        )
+        let temperatureMiddle = try XCTUnwrap(
+            MetricStatusPalette.temperature(celsius: 82).usingColorSpace(.sRGB)
+        )
+        XCTAssertGreaterThan(cpuMiddle.redComponent, MetricStatusPalette.safe.redComponent)
+        XCTAssertLessThan(cpuMiddle.greenComponent, MetricStatusPalette.safe.greenComponent)
+        XCTAssertGreaterThan(temperatureMiddle.redComponent, MetricStatusPalette.safe.redComponent)
+        XCTAssertLessThan(temperatureMiddle.greenComponent, MetricStatusPalette.safe.greenComponent)
     }
 
     func testFourMetricPresentationUsesExactRequestedVisibleStrings() {
@@ -352,6 +404,16 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(
             label.attribute(.foregroundColor, at: batteryRange.location, effectiveRange: nil) as? NSColor,
             StatusItemLabelBuilder.Palette.upload
+        )
+        let cpuRange = (label.string as NSString).range(of: "50%")
+        let temperatureRange = (label.string as NSString).range(of: "55°C")
+        XCTAssertEqual(
+            label.attribute(.foregroundColor, at: cpuRange.location, effectiveRange: nil) as? NSColor,
+            MetricStatusPalette.cpu(normalizedPercent: 50)
+        )
+        XCTAssertEqual(
+            label.attribute(.foregroundColor, at: temperatureRange.location, effectiveRange: nil) as? NSColor,
+            MetricStatusPalette.temperature(celsius: 55)
         )
     }
 

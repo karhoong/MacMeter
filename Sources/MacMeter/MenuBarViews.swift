@@ -1,6 +1,67 @@
 import AppKit
 import Combine
 
+enum MetricStatusPalette {
+    static let safe = NSColor(srgbRed: 0.30, green: 1.0, blue: 0.53, alpha: 1)
+    static let caution = NSColor(srgbRed: 1.0, green: 0.87, blue: 0.25, alpha: 1)
+    static let warm = NSColor(srgbRed: 1.0, green: 0.58, blue: 0.20, alpha: 1)
+    static let critical = NSColor(srgbRed: 1.0, green: 0.34, blue: 0.40, alpha: 1)
+
+    private struct Stop {
+        let value: Double
+        let red: CGFloat
+        let green: CGFloat
+        let blue: CGFloat
+    }
+
+    static func cpu(normalizedPercent: Double) -> NSColor {
+        interpolated(
+            normalizedPercent,
+            stops: [
+                Stop(value: 0, red: 0.30, green: 1.0, blue: 0.53),
+                Stop(value: 45, red: 0.30, green: 1.0, blue: 0.53),
+                Stop(value: 65, red: 1.0, green: 0.87, blue: 0.25),
+                Stop(value: 82, red: 1.0, green: 0.58, blue: 0.20),
+                Stop(value: 100, red: 1.0, green: 0.34, blue: 0.40)
+            ]
+        )
+    }
+
+    static func temperature(celsius: Double) -> NSColor {
+        interpolated(
+            celsius,
+            stops: [
+                Stop(value: 0, red: 0.30, green: 1.0, blue: 0.53),
+                Stop(value: 60, red: 0.30, green: 1.0, blue: 0.53),
+                Stop(value: 75, red: 1.0, green: 0.87, blue: 0.25),
+                Stop(value: 88, red: 1.0, green: 0.58, blue: 0.20),
+                Stop(value: 100, red: 1.0, green: 0.34, blue: 0.40)
+            ]
+        )
+    }
+
+    private static func interpolated(_ rawValue: Double, stops: [Stop]) -> NSColor {
+        guard let first = stops.first, let last = stops.last else { return safe }
+        let value = min(max(rawValue, first.value), last.value)
+        guard let upperIndex = stops.firstIndex(where: { value <= $0.value }) else {
+            return NSColor(srgbRed: last.red, green: last.green, blue: last.blue, alpha: 1)
+        }
+        guard upperIndex > 0 else {
+            return NSColor(srgbRed: first.red, green: first.green, blue: first.blue, alpha: 1)
+        }
+        let lower = stops[upperIndex - 1]
+        let upper = stops[upperIndex]
+        let span = max(upper.value - lower.value, .leastNonzeroMagnitude)
+        let progress = CGFloat((value - lower.value) / span)
+        return NSColor(
+            srgbRed: lower.red + ((upper.red - lower.red) * progress),
+            green: lower.green + ((upper.green - lower.green) * progress),
+            blue: lower.blue + ((upper.blue - lower.blue) * progress),
+            alpha: 1
+        )
+    }
+}
+
 enum MetricAccessibility {
     static func cpu(_ value: Double) -> String {
         "CPU utilization \(MetricFormatting.percent(value))"
@@ -28,13 +89,25 @@ enum CycleActivityPolicy {
 enum MenuBarPresentation {
     static func rows(for enabledMetrics: [MetricID]) -> [[MetricID]] {
         guard !enabledMetrics.isEmpty else { return [] }
-        if enabledMetrics.count == MetricID.allCases.count,
-           MetricID.allCases.allSatisfy(enabledMetrics.contains) {
-            // Keep the widest network reading on its own line. This is the exact
-            // compact four-metric layout shown in the product specification.
-            return [[.network], [.cpu, .temperature, .battery]]
+        guard enabledMetrics.count > 1 else { return [enabledMetrics] }
+
+        if enabledMetrics.contains(.network) {
+            let remaining = enabledMetrics.filter { $0 != .network }
+            return remaining.isEmpty ? [[.network]] : [[.network], remaining]
         }
-        return [enabledMetrics]
+
+        if enabledMetrics == [.cpu, .temperature] {
+            return [[.cpu], [.temperature]]
+        }
+
+        if enabledMetrics.count == 3,
+           enabledMetrics.contains(.cpu),
+           enabledMetrics.contains(.temperature),
+           enabledMetrics.contains(.battery) {
+            return [[.cpu, .temperature], [.battery]]
+        }
+
+        return [[enabledMetrics[0]], Array(enabledMetrics.dropFirst())]
     }
 
     static func cpu(_ reading: CPUReading, scale: CPUScale) -> String {

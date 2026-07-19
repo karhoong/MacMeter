@@ -22,11 +22,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func show() {
         let settingsWindow = window ?? makeWindow()
+        settingsWindow.title = "MacMeter Settings"
         if settingsWindow.isMiniaturized {
             settingsWindow.deminiaturize(nil)
         }
         activateApplication()
         settingsWindow.makeKeyAndOrderFront(nil)
+        settingsWindow.title = "MacMeter Settings"
     }
 
     func close() {
@@ -40,8 +42,11 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow() -> NSWindow {
         let settingsController = NativeSettingsViewController(settings: settings, loginItem: loginItem)
+        settingsController.title = "MacMeter Settings"
         let window = NSWindow(contentViewController: settingsController)
         window.title = "MacMeter Settings"
+        window.titleVisibility = .visible
+        window.toolbarStyle = .preference
         window.identifier = NSUserInterfaceItemIdentifier("MacMeter.Settings")
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.tabbingMode = .disallowed

@@ -48,7 +48,7 @@ final class NativePopoverViewController: NSViewController {
 
     private let titleLabel = NativePopoverViewController.makeLabel(
         identifier: Identifier.title,
-        font: .systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
+        font: .systemFont(ofSize: 15, weight: .semibold)
     )
     private let versionLabel = NativePopoverViewController.makeLabel(
         identifier: Identifier.version,
@@ -58,7 +58,7 @@ final class NativePopoverViewController: NSViewController {
     private let metricsStack = NativePopoverViewController.makeStack(
         identifier: Identifier.metricsStack,
         orientation: .vertical,
-        spacing: 10
+        spacing: 14
     )
     private let updatedLabel = NativePopoverViewController.makeLabel(
         identifier: Identifier.updated,
@@ -67,11 +67,13 @@ final class NativePopoverViewController: NSViewController {
     )
     private(set) lazy var settingsButton: NSButton = makeButton(
         title: "Settings…",
+        symbolName: "slider.horizontal.3",
         identifier: Identifier.settingsButton,
         action: #selector(openSettingsPressed)
     )
     private(set) lazy var quitButton: NSButton = makeButton(
         title: "Quit",
+        symbolName: "power",
         identifier: Identifier.quitButton,
         action: #selector(quitPressed)
     )
@@ -154,8 +156,19 @@ final class NativePopoverViewController: NSViewController {
         titleLabel.setAccessibilityLabel("MacMeter")
         versionLabel.stringValue = appVersion.displayLabel
         versionLabel.setAccessibilityLabel(appVersion.displayLabel)
+        versionLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
-        let header = Self.makeStack(orientation: .horizontal, spacing: 8)
+        let appIcon = NSImageView(image: NSApp.applicationIconImage)
+        appIcon.imageScaling = .scaleProportionallyUpOrDown
+        appIcon.setAccessibilityElement(false)
+        appIcon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            appIcon.widthAnchor.constraint(equalToConstant: 24),
+            appIcon.heightAnchor.constraint(equalToConstant: 24)
+        ])
+
+        let header = Self.makeStack(orientation: .horizontal, spacing: 9)
+        header.addArrangedSubview(appIcon)
         header.addArrangedSubview(titleLabel)
         header.addArrangedSubview(Self.makeFlexibleSpacer())
         header.addArrangedSubview(versionLabel)
@@ -180,13 +193,17 @@ final class NativePopoverViewController: NSViewController {
 
         settingsButton.setAccessibilityLabel("Open MacMeter Settings")
         quitButton.setAccessibilityLabel("Quit MacMeter")
-        let footer = Self.makeStack(orientation: .horizontal, spacing: 8)
-        footer.addArrangedSubview(updatedLabel)
+        let updatedIcon = Self.makeSymbolImage("clock", pointSize: 11, color: .secondaryLabelColor)
+        let updatedGroup = Self.makeStack(orientation: .horizontal, spacing: 5)
+        updatedGroup.addArrangedSubview(updatedIcon)
+        updatedGroup.addArrangedSubview(updatedLabel)
+        let footer = Self.makeStack(orientation: .horizontal, spacing: 10)
+        footer.addArrangedSubview(updatedGroup)
         footer.addArrangedSubview(Self.makeFlexibleSpacer())
         footer.addArrangedSubview(settingsButton)
         footer.addArrangedSubview(quitButton)
 
-        let rootStack = Self.makeStack(orientation: .vertical, spacing: 10)
+        let rootStack = Self.makeStack(orientation: .vertical, spacing: 12)
         rootStack.translatesAutoresizingMaskIntoConstraints = false
         rootStack.addArrangedSubview(header)
         rootStack.addArrangedSubview(Self.makeSeparator())
@@ -196,10 +213,10 @@ final class NativePopoverViewController: NSViewController {
         root.addSubview(rootStack)
 
         NSLayoutConstraint.activate([
-            rootStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 14),
-            rootStack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -14),
-            rootStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 14),
-            rootStack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -14),
+            rootStack.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            rootStack.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            rootStack.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
+            rootStack.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
             scrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 120)
         ])
 
@@ -270,7 +287,7 @@ final class NativePopoverViewController: NSViewController {
     }
 
     private func buildMetricSections() {
-        let cpuSection = NativePopoverMetricSectionView(metric: .cpu, title: "CPU")
+        let cpuSection = NativePopoverMetricSectionView(metric: .cpu, title: "CPU", symbolName: "cpu")
         cpuAvailableStack.addArrangedSubview(cpuOverallRow)
         cpuAvailableStack.addArrangedSubview(cpuSummedRow)
         cpuAvailableStack.addArrangedSubview(Self.makeSeparator())
@@ -278,20 +295,32 @@ final class NativePopoverViewController: NSViewController {
         cpuSection.setAvailableView(cpuAvailableStack)
         addSection(cpuSection, metric: .cpu)
 
-        let temperatureSection = NativePopoverMetricSectionView(metric: .temperature, title: "SoC Temperature")
+        let temperatureSection = NativePopoverMetricSectionView(
+            metric: .temperature,
+            title: "SoC Temperature",
+            symbolName: "thermometer.medium"
+        )
         temperatureAvailableStack.addArrangedSubview(temperatureValueRow)
         temperatureAvailableStack.addArrangedSubview(temperatureSensorRow)
         temperatureSection.setAvailableView(temperatureAvailableStack)
         addSection(temperatureSection, metric: .temperature)
 
-        let networkSection = NativePopoverMetricSectionView(metric: .network, title: "Network")
+        let networkSection = NativePopoverMetricSectionView(
+            metric: .network,
+            title: "Network",
+            symbolName: "arrow.up.arrow.down"
+        )
         networkAvailableStack.addArrangedSubview(networkInboundRow)
         networkAvailableStack.addArrangedSubview(networkOutboundRow)
         networkAvailableStack.addArrangedSubview(networkInterfacesRow)
         networkSection.setAvailableView(networkAvailableStack)
         addSection(networkSection, metric: .network)
 
-        let batterySection = NativePopoverMetricSectionView(metric: .battery, title: "Battery Power")
+        let batterySection = NativePopoverMetricSectionView(
+            metric: .battery,
+            title: "Battery Power",
+            symbolName: "battery.75"
+        )
         batteryAvailableStack.addArrangedSubview(batteryPowerRow)
         batterySection.setAvailableView(batteryAvailableStack)
         addSection(batterySection, metric: .battery)
@@ -313,6 +342,10 @@ final class NativePopoverViewController: NSViewController {
         section.showAvailable()
         cpuOverallRow.value = MetricFormatting.percent(reading.normalized)
         cpuSummedRow.value = MetricFormatting.percent(reading.summed)
+        let cpuColor = MetricStatusPalette.cpu(normalizedPercent: reading.normalized)
+        cpuOverallRow.valueColor = cpuColor
+        cpuSummedRow.valueColor = cpuColor
+        section.setAccentColor(cpuColor)
         reconcileCoreRows(reading.cores)
     }
 
@@ -367,6 +400,9 @@ final class NativePopoverViewController: NSViewController {
             reading.hottestCelsius,
             unit: settings.temperatureUnit
         )
+        let temperatureColor = MetricStatusPalette.temperature(celsius: reading.hottestCelsius)
+        temperatureValueRow.valueColor = temperatureColor
+        section.setAccentColor(temperatureColor)
         temperatureSensorRow.value = "\(reading.sensorCount)"
     }
 
@@ -380,6 +416,9 @@ final class NativePopoverViewController: NSViewController {
         section.showAvailable()
         networkInboundRow.value = "\(MetricFormatting.network(bytesPerSecond: reading.inboundBytesPerSecond, unit: settings.networkUnit)) \(settings.networkUnit.rawValue)"
         networkOutboundRow.value = "\(MetricFormatting.network(bytesPerSecond: reading.outboundBytesPerSecond, unit: settings.networkUnit)) \(settings.networkUnit.rawValue)"
+        networkInboundRow.valueColor = StatusItemLabelBuilder.Palette.download
+        networkOutboundRow.valueColor = StatusItemLabelBuilder.Palette.upload
+        section.setAccentColor(StatusItemLabelBuilder.Palette.idle)
         networkInterfacesRow.value = reading.interfaces.isEmpty ? "—" : reading.interfaces.joined(separator: ", ")
     }
 
@@ -394,6 +433,7 @@ final class NativePopoverViewController: NSViewController {
         batteryPowerRow.title = reading.direction.spokenLabel
         batteryPowerRow.value = MetricFormatting.battery(reading)
         batteryPowerRow.valueColor = Self.batteryColor(reading.direction)
+        section.setAccentColor(Self.batteryColor(reading.direction))
         batteryPowerRow.setAccessibilityLabel(MetricAccessibility.battery(reading))
     }
 
@@ -405,10 +445,13 @@ final class NativePopoverViewController: NSViewController {
         quitAction()
     }
 
-    private func makeButton(title: String, identifier: String, action: Selector) -> NSButton {
+    private func makeButton(title: String, symbolName: String, identifier: String, action: Selector) -> NSButton {
         let button = NSButton(title: title, target: self, action: action)
         button.identifier = NSUserInterfaceItemIdentifier(identifier)
         button.bezelStyle = .rounded
+        button.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        button.imagePosition = .imageLeading
+        button.imageHugsTitle = true
         return button
     }
 
@@ -464,25 +507,56 @@ final class NativePopoverViewController: NSViewController {
         separator.boxType = .separator
         return separator
     }
+
+    fileprivate static func makeSymbolImage(
+        _ name: String,
+        pointSize: CGFloat,
+        color: NSColor
+    ) -> NSImageView {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+        let imageView = NSImageView(image: image)
+        imageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: pointSize, weight: .medium)
+        imageView.contentTintColor = color
+        imageView.imageScaling = .scaleProportionallyDown
+        imageView.setAccessibilityElement(false)
+        return imageView
+    }
 }
 
 @MainActor
 final class NativePopoverMetricSectionView: NSBox {
     let metric: MetricID
     private let contentStack = NSStackView()
+    private let iconView: NSImageView
+    private let titleLabel: NSTextField
     private(set) var availableView: NSView?
     private(set) var unavailableLabel: NSTextField
 
-    init(metric: MetricID, title: String) {
+    init(metric: MetricID, title: String, symbolName: String) {
         self.metric = metric
+        iconView = NativePopoverViewController.makeSymbolImage(
+            symbolName,
+            pointSize: 13,
+            color: .secondaryLabelColor
+        )
+        titleLabel = NSTextField(labelWithString: title)
         unavailableLabel = NSTextField(labelWithString: "")
         super.init(frame: .zero)
 
         identifier = NSUserInterfaceItemIdentifier(NativePopoverViewController.Identifier.section(metric))
-        boxType = .primary
-        titlePosition = .atTop
-        self.title = title
-        contentViewMargins = NSSize(width: 10, height: 8)
+        boxType = .custom
+        titlePosition = .noTitle
+        borderWidth = 0.5
+        borderColor = NSColor.separatorColor.withAlphaComponent(0.50)
+        cornerRadius = 10
+        fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.56)
+        contentViewMargins = NSSize(width: 12, height: 10)
+
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        let header = NativePopoverViewController.makeStack(orientation: .horizontal, spacing: 7)
+        header.addArrangedSubview(iconView)
+        header.addArrangedSubview(titleLabel)
+        header.addArrangedSubview(NativePopoverViewController.makeFlexibleSpacer())
 
         unavailableLabel.identifier = NSUserInterfaceItemIdentifier(
             NativePopoverViewController.Identifier.unavailable(metric)
@@ -496,8 +570,9 @@ final class NativePopoverMetricSectionView: NSBox {
         contentStack.orientation = .vertical
         contentStack.alignment = .leading
         contentStack.distribution = .fill
-        contentStack.spacing = 5
+        contentStack.spacing = 9
         contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.addArrangedSubview(header)
         contentStack.addArrangedSubview(unavailableLabel)
         contentView?.addSubview(contentStack)
         if let contentView {
@@ -517,7 +592,12 @@ final class NativePopoverMetricSectionView: NSBox {
 
     func setAvailableView(_ view: NSView) {
         availableView = view
-        contentStack.insertArrangedSubview(view, at: 0)
+        contentStack.insertArrangedSubview(view, at: 1)
+    }
+
+    func setAccentColor(_ color: NSColor) {
+        iconView.contentTintColor = color
+        titleLabel.textColor = color
     }
 
     func showAvailable() {
@@ -561,10 +641,12 @@ final class NativePopoverValueRowView: NSStackView {
         spacing = 8
 
         titleLabel.stringValue = title
+        titleLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        titleLabel.textColor = .secondaryLabelColor
         titleLabel.setContentCompressionResistancePriority(.defaultHigh, for: .horizontal)
         valueLabel.identifier = NSUserInterfaceItemIdentifier(valueIdentifier)
         valueLabel.alignment = .right
-        valueLabel.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        valueLabel.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         valueLabel.lineBreakMode = .byTruncatingMiddle
 
         addArrangedSubview(titleLabel)
@@ -625,6 +707,7 @@ final class NativePopoverCoreRowView: NSStackView {
         }
         kindLabel.setAccessibilityLabel(reading.kind.displayName)
         valueLabel.stringValue = MetricFormatting.percent(reading.utilization)
+        valueLabel.textColor = MetricStatusPalette.cpu(normalizedPercent: reading.utilization)
         setAccessibilityLabel(
             "Core \(reading.id), \(reading.kind.displayName), \(MetricFormatting.percent(reading.utilization))"
         )

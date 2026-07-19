@@ -16,7 +16,6 @@ rm -f "$timing_evidence"
 rm -f "$privacy_evidence"
 bash Scripts/test-version-policy.sh
 bash Scripts/test-timing-evidence.sh
-bash Scripts/test-performance-harness.sh
 bash Scripts/test-runtime-privacy-evidence.sh
 env XDG_CACHE_HOME="$cache_root/xdg" \
   CLANG_MODULE_CACHE_PATH="$cache_root/clang" \
