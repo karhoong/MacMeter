@@ -235,7 +235,7 @@ enum MetricFormatting {
     static func networkPair(_ reading: NetworkReading, unit: NetworkUnit) -> String {
         let outgoing = network(bytesPerSecond: reading.outboundBytesPerSecond, unit: unit, fixedOneDecimal: true)
         let incoming = network(bytesPerSecond: reading.inboundBytesPerSecond, unit: unit, fixedOneDecimal: true)
-        return "↑\(outgoing)↓\(incoming)\(unit.menuLabel)"
+        return "↑\(outgoing) ↓\(incoming)\(unit.menuLabel)"
     }
 
     static func decimal(

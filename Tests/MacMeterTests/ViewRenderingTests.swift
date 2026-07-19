@@ -248,7 +248,7 @@ final class ViewRenderingTests: XCTestCase {
         )
         let battery = BatteryPowerReading(watts: 12, direction: .draining)
 
-        XCTAssertEqual(MenuBarPresentation.network(network, unit: .MBps), "↑0.0↓0.5MB/s")
+        XCTAssertEqual(MenuBarPresentation.network(network, unit: .MBps), "↑0.0 ↓0.5MB/s")
         XCTAssertEqual(
             [
                 MenuBarPresentation.network(network, unit: .MBps),
@@ -256,7 +256,7 @@ final class ViewRenderingTests: XCTestCase {
                 MenuBarPresentation.temperature(temperature, unit: .celsius),
                 MenuBarPresentation.battery(battery)
             ].joined(separator: " | "),
-            "↑0.0↓0.5MB/s | 50% | 80°C | D 12W"
+            "↑0.0 ↓0.5MB/s | 50% | 80°C | D 12W"
         )
         XCTAssertEqual(MenuBarPresentation.temperature(temperature, unit: .fahrenheit), "176°F")
     }
@@ -295,7 +295,7 @@ final class ViewRenderingTests: XCTestCase {
             settings: fixture.settings,
             cycleIndex: 0
         )
-        XCTAssertEqual(label.string, "↑0.4↓3.2MB/s\n50% | 55°C | D 8.4W")
+        XCTAssertEqual(label.string, "↑0.4 ↓3.2MB/s\n50% | 55°C | D 8.4W")
         label.enumerateAttribute(.font, in: NSRange(location: 0, length: label.length)) { value, _, _ in
             XCTAssertEqual((value as? NSFont)?.pointSize, StatusItemLabelBuilder.fontSize)
             XCTAssertEqual((value as? NSFont)?.fontDescriptor.symbolicTraits.contains(.bold), true)
@@ -304,24 +304,24 @@ final class ViewRenderingTests: XCTestCase {
         let downloadRange = (label.string as NSString).range(of: "↓3.2MB/s")
         XCTAssertEqual(
             label.attribute(.foregroundColor, at: uploadRange.location, effectiveRange: nil) as? NSColor,
-            .systemRed
+            StatusItemLabelBuilder.Palette.upload
         )
         XCTAssertEqual(
             label.attribute(.foregroundColor, at: downloadRange.location, effectiveRange: nil) as? NSColor,
-            .systemGreen
+            StatusItemLabelBuilder.Palette.download
         )
         let batteryRange = (label.string as NSString).range(of: "D 8.4W")
         XCTAssertEqual(
             label.attribute(.foregroundColor, at: batteryRange.location, effectiveRange: nil) as? NSColor,
-            .systemRed
+            StatusItemLabelBuilder.Palette.upload
         )
     }
 
     func testNativeStatusLabelBatteryColorsAreRedGreenAndBlue() throws {
         let cases: [(BatteryPowerReading, NSColor)] = [
-            (BatteryPowerReading(watts: 8.4, direction: .draining), .systemRed),
-            (BatteryPowerReading(watts: 30, direction: .charging), .systemGreen),
-            (BatteryPowerReading(watts: 0, direction: .idle), .systemBlue)
+            (BatteryPowerReading(watts: 8.4, direction: .draining), StatusItemLabelBuilder.Palette.upload),
+            (BatteryPowerReading(watts: 30, direction: .charging), StatusItemLabelBuilder.Palette.download),
+            (BatteryPowerReading(watts: 0, direction: .idle), StatusItemLabelBuilder.Palette.idle)
         ]
 
         for (reading, expectedColor) in cases {
@@ -363,13 +363,33 @@ final class ViewRenderingTests: XCTestCase {
         )
         defer { controller.close() }
 
-        XCTAssertEqual(controller.renderedTitle.string, "↑0.4↓3.2MB/s\n50% | 55°C | D 8.4W")
+        XCTAssertEqual(controller.renderedTitle.string, "↑0.4 ↓3.2MB/s\n50% | 55°C | D 8.4W")
         XCTAssertEqual(controller.statusButtonSubviewCount, 0, "Custom status-button subviews trigger continuous AppKit replicant snapshots")
+        XCTAssertEqual(controller.renderedBackdropColor, StatusItemLabelBuilder.Palette.backdrop)
+        XCTAssertEqual(controller.renderedBackdropCornerRadius, 5)
         let bounds = controller.renderedTitle.boundingRect(
             with: NSSize(width: 1_000, height: NSStatusBar.system.thickness),
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
         XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(bounds.width) + 8)
+    }
+
+    func testTwoLineTypographyUsesActualStatusBarHeightAndMovesBaselinesDown() {
+        let font = NSFont.monospacedSystemFont(ofSize: StatusItemLabelBuilder.fontSize, weight: .semibold)
+        let naturalHeight = font.ascender - font.descender + font.leading
+        let layout = StatusItemLabelBuilder.typography(
+            availableHeight: NSStatusBar.system.thickness,
+            rowCount: 2
+        )
+
+        XCTAssertGreaterThanOrEqual(layout.lineHeight, naturalHeight)
+        XCTAssertLessThanOrEqual(layout.lineHeight * 2, NSStatusBar.system.thickness)
+        XCTAssertLessThan(layout.baselineOffset, 0, "Two-line text must move down to protect top-row ascenders")
+        XCTAssertGreaterThanOrEqual(layout.baselineOffset, -0.75)
+        XCTAssertEqual(
+            StatusItemLabelBuilder.typography(availableHeight: NSStatusBar.system.thickness, rowCount: 1).baselineOffset,
+            0
+        )
     }
 
     func testStatusControllerCoalescesOneSamplingBurstIntoOneRefresh() {

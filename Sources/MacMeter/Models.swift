@@ -10,7 +10,7 @@ struct AppVersionInfo: Equatable {
     }
 
     init(bundle: Bundle = .main) {
-        version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.5"
+        version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.6"
         build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
     }
 

@@ -5,7 +5,7 @@
 - [x] Swift unit and coordinator suites pass with coverage enabled.
 - [x] All declared metric calculation/conversion decision paths pass the executable 100% semantic branch contract; production line coverage is ≥85%.
 - [x] Swift 6 Debug and Release Xcode builds pass.
-- [x] Built app is arm64, version `0.1.5`, and `LSUIElement=true`.
+- [x] Built preview app is arm64, version `0.1.6`, and `LSUIElement=true`; exact clean-candidate QA rerun pending.
 - [x] No outbound-network implementation is present; the current Release candidate has commit/artifact-bound runtime evidence of zero outbound or listening sockets.
 
 ## Physical validation

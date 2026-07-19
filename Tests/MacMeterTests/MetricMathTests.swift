@@ -166,7 +166,7 @@ final class MetricMathTests: XCTestCase {
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000, unit: .KBps), "1")
         XCTAssertEqual(MetricFormatting.network(bytesPerSecond: 1_000, unit: .Kbps), "8")
         let reading = NetworkReading(inboundBytesPerSecond: 1_000_000, outboundBytesPerSecond: 200_000, interfaces: ["en0"])
-        XCTAssertEqual(MetricFormatting.networkPair(reading, unit: .MBps), "↑0.2↓1.0MB/s")
+        XCTAssertEqual(MetricFormatting.networkPair(reading, unit: .MBps), "↑0.2 ↓1.0MB/s")
     }
 
     func testFormattingCoversRoundedCompactIntegerDecimalAndLargeValues() {

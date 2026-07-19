@@ -3,17 +3,46 @@ import Combine
 
 enum StatusItemLabelBuilder {
     static let fontSize: CGFloat = 9
-    static let lineHeight: CGFloat = 10.5
+
+    struct Typography: Equatable {
+        let lineHeight: CGFloat
+        let baselineOffset: CGFloat
+    }
+
+    enum Palette {
+        static let backdrop = NSColor(srgbRed: 0.055, green: 0.067, blue: 0.086, alpha: 0.88)
+        static let primary = NSColor(srgbRed: 0.96, green: 0.98, blue: 1.0, alpha: 1)
+        static let secondary = NSColor(srgbRed: 0.72, green: 0.76, blue: 0.82, alpha: 1)
+        static let upload = NSColor(srgbRed: 1.0, green: 0.34, blue: 0.40, alpha: 1)
+        static let download = NSColor(srgbRed: 0.30, green: 1.0, blue: 0.53, alpha: 1)
+        static let idle = NSColor(srgbRed: 0.31, green: 0.75, blue: 1.0, alpha: 1)
+    }
+
+    static func typography(availableHeight: CGFloat, rowCount: Int) -> Typography {
+        let font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold)
+        let naturalLineHeight = font.ascender - font.descender + font.leading
+        let quarterPointRoundedHeight = ceil(naturalLineHeight * 4) / 4
+        let maximumLineHeight = max(1, availableHeight / CGFloat(max(1, rowCount)))
+        let lineHeight = min(quarterPointRoundedHeight, maximumLineHeight)
+
+        // NSButtonCell places a two-line attributed title slightly above its
+        // visual center. Keep the natural font box, then use the remaining
+        // status-bar height (capped at 0.75 pt) to nudge both baselines down.
+        let baselineOffset: CGFloat = rowCount > 1 ? -min(0.75, max(0, availableHeight - lineHeight * CGFloat(rowCount))) : 0
+        return Typography(lineHeight: lineHeight, baselineOffset: baselineOffset)
+    }
 
     @MainActor
     static func make(
         coordinator: MetricsCoordinator,
         settings: SettingsStore,
-        cycleIndex: Int
+        cycleIndex: Int,
+        availableHeight: CGFloat = NSStatusBar.system.thickness
     ) -> NSAttributedString {
         let enabled = settings.enabledMetrics
         guard !enabled.isEmpty else {
-            return attributed("◉", color: .labelColor)
+            let layout = typography(availableHeight: availableHeight, rowCount: 1)
+            return attributed("◉", color: Palette.primary, typography: layout)
         }
 
         let rows: [[MetricID]]
@@ -22,17 +51,18 @@ enum StatusItemLabelBuilder {
         } else {
             rows = MenuBarPresentation.rows(for: enabled)
         }
+        let layout = typography(availableHeight: availableHeight, rowCount: rows.count)
 
         let result = NSMutableAttributedString()
         for (rowIndex, row) in rows.enumerated() {
             if rowIndex > 0 {
-                result.append(attributed("\n", color: .secondaryLabelColor))
+                result.append(attributed("\n", color: Palette.secondary, typography: layout))
             }
             for (metricIndex, metric) in row.enumerated() {
                 if metricIndex > 0 {
-                    result.append(attributed(" | ", color: .secondaryLabelColor))
+                    result.append(attributed(" | ", color: Palette.secondary, typography: layout))
                 }
-                result.append(segment(metric, coordinator: coordinator, settings: settings))
+                result.append(segment(metric, coordinator: coordinator, settings: settings, typography: layout))
             }
         }
         return result
@@ -72,33 +102,38 @@ enum StatusItemLabelBuilder {
     private static func segment(
         _ metric: MetricID,
         coordinator: MetricsCoordinator,
-        settings: SettingsStore
+        settings: SettingsStore,
+        typography: Typography
     ) -> NSAttributedString {
         switch metric {
         case .cpu:
-            guard let reading = coordinator.cpu.value else { return attributed("—", color: .secondaryLabelColor) }
-            return attributed(MenuBarPresentation.cpu(reading, scale: settings.cpuScale), color: .labelColor)
+            guard let reading = coordinator.cpu.value else { return attributed("—", color: Palette.secondary, typography: typography) }
+            return attributed(MenuBarPresentation.cpu(reading, scale: settings.cpuScale), color: Palette.primary, typography: typography)
         case .temperature:
-            guard let reading = coordinator.temperature.value else { return attributed("—", color: .secondaryLabelColor) }
-            return attributed(MenuBarPresentation.temperature(reading, unit: settings.temperatureUnit), color: .labelColor)
+            guard let reading = coordinator.temperature.value else { return attributed("—", color: Palette.secondary, typography: typography) }
+            return attributed(MenuBarPresentation.temperature(reading, unit: settings.temperatureUnit), color: Palette.primary, typography: typography)
         case .network:
             guard let reading = coordinator.network.value else {
-                return attributed("↑—↓—\(settings.networkUnit.menuLabel)", color: .secondaryLabelColor)
+                return attributed("↑— ↓—\(settings.networkUnit.menuLabel)", color: Palette.secondary, typography: typography)
             }
-            return networkAttributed(reading, unit: settings.networkUnit)
+            return networkAttributed(reading, unit: settings.networkUnit, typography: typography)
         case .battery:
-            guard let reading = coordinator.battery.value else { return attributed("—", color: .secondaryLabelColor) }
+            guard let reading = coordinator.battery.value else { return attributed("—", color: Palette.secondary, typography: typography) }
             let color: NSColor
             switch reading.direction.colorRole {
-            case .charging: color = .systemGreen
-            case .draining: color = .systemRed
-            case .idle: color = .systemBlue
+            case .charging: color = Palette.download
+            case .draining: color = Palette.upload
+            case .idle: color = Palette.idle
             }
-            return attributed(MenuBarPresentation.battery(reading), color: color)
+            return attributed(MenuBarPresentation.battery(reading), color: color, typography: typography)
         }
     }
 
-    private static func networkAttributed(_ reading: NetworkReading, unit: NetworkUnit) -> NSAttributedString {
+    private static func networkAttributed(
+        _ reading: NetworkReading,
+        unit: NetworkUnit,
+        typography: Typography
+    ) -> NSAttributedString {
         let outgoing = MetricFormatting.network(
             bytesPerSecond: reading.outboundBytesPerSecond,
             unit: unit,
@@ -110,22 +145,28 @@ enum StatusItemLabelBuilder {
             fixedOneDecimal: true
         )
         let result = NSMutableAttributedString()
-        result.append(attributed("↑\(outgoing)", color: .systemRed))
-        result.append(attributed("↓\(incoming)\(unit.menuLabel)", color: .systemGreen))
+        result.append(attributed("↑\(outgoing)", color: Palette.upload, typography: typography))
+        result.append(attributed(" ", color: Palette.secondary, typography: typography))
+        result.append(attributed("↓\(incoming)\(unit.menuLabel)", color: Palette.download, typography: typography))
         return result
     }
 
-    private static func attributed(_ text: String, color: NSColor) -> NSAttributedString {
+    private static func attributed(
+        _ text: String,
+        color: NSColor,
+        typography: Typography
+    ) -> NSAttributedString {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        paragraph.minimumLineHeight = lineHeight
-        paragraph.maximumLineHeight = lineHeight
+        paragraph.minimumLineHeight = typography.lineHeight
+        paragraph.maximumLineHeight = typography.lineHeight
         return NSAttributedString(
             string: text,
             attributes: [
                 .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .semibold),
                 .foregroundColor: color,
-                .paragraphStyle: paragraph
+                .paragraphStyle: paragraph,
+                .baselineOffset: typography.baselineOffset
             ]
         )
     }
@@ -151,6 +192,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     var statusButtonSubviewCount: Int { statusItem.button?.subviews.count ?? 0 }
     var renderedLength: CGFloat { statusItem.length }
     var statusButton: NSStatusBarButton? { statusItem.button }
+    var renderedBackdropColor: NSColor? {
+        guard let color = statusItem.button?.layer?.backgroundColor else { return nil }
+        return NSColor(cgColor: color)
+    }
+    var renderedBackdropCornerRadius: CGFloat { statusItem.button?.layer?.cornerRadius ?? 0 }
     var isPopoverPrepared: Bool { popover.contentViewController != nil }
     weak var popoverContentViewController: NSViewController? { popover.contentViewController }
 
@@ -207,6 +253,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         button.cell?.lineBreakMode = .byClipping
         button.cell?.usesSingleLineMode = false
         button.cell?.wraps = true
+        button.wantsLayer = true
+        button.layer?.backgroundColor = StatusItemLabelBuilder.Palette.backdrop.cgColor
+        button.layer?.cornerRadius = 5
+        button.layer?.masksToBounds = true
     }
 
     private func scheduleRefresh(settingsChanged: Bool) {
@@ -260,7 +310,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let attributedTitle = StatusItemLabelBuilder.make(
             coordinator: coordinator,
             settings: settings,
-            cycleIndex: cycleIndex
+            cycleIndex: cycleIndex,
+            availableHeight: button.bounds.height > 0
+                ? button.bounds.height
+                : NSStatusBar.system.thickness
         )
         button.attributedTitle = attributedTitle
         let bounds = attributedTitle.boundingRect(
