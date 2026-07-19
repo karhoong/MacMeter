@@ -31,8 +31,9 @@ enum MenuBarPresentation {
         guard !enabledMetrics.isEmpty else { return [] }
         if enabledMetrics.count == MetricID.allCases.count,
            MetricID.allCases.allSatisfy(enabledMetrics.contains) {
-            // The status bar has a fixed height, so all values share one compact row.
-            return [[.network, .cpu, .temperature, .battery]]
+            // Keep the widest network reading on its own line. This is the exact
+            // compact four-metric layout shown in the product specification.
+            return [[.network], [.cpu, .temperature, .battery]]
         }
         return [enabledMetrics]
     }

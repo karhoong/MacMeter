@@ -3,7 +3,8 @@ import Combine
 import SwiftUI
 
 enum StatusItemLabelBuilder {
-    static let fontSize: CGFloat = 8
+    static let fontSize: CGFloat = 6.5
+    static let lineHeight: CGFloat = 7.5
 
     @MainActor
     static func make(
@@ -16,19 +17,24 @@ enum StatusItemLabelBuilder {
             return attributed("◉", color: .labelColor)
         }
 
-        let metrics: [MetricID]
+        let rows: [[MetricID]]
         if settings.displayMode == .cycle {
-            metrics = [enabled[cycleIndex % enabled.count]]
+            rows = [[enabled[cycleIndex % enabled.count]]]
         } else {
-            metrics = MenuBarPresentation.rows(for: enabled).flatMap { $0 }
+            rows = MenuBarPresentation.rows(for: enabled)
         }
 
         let result = NSMutableAttributedString()
-        for (index, metric) in metrics.enumerated() {
-            if index > 0 {
-                result.append(attributed(" | ", color: .secondaryLabelColor))
+        for (rowIndex, row) in rows.enumerated() {
+            if rowIndex > 0 {
+                result.append(attributed("\n", color: .secondaryLabelColor))
             }
-            result.append(segment(metric, coordinator: coordinator, settings: settings))
+            for (metricIndex, metric) in row.enumerated() {
+                if metricIndex > 0 {
+                    result.append(attributed(" | ", color: .secondaryLabelColor))
+                }
+                result.append(segment(metric, coordinator: coordinator, settings: settings))
+            }
         }
         return result
     }
@@ -94,18 +100,23 @@ enum StatusItemLabelBuilder {
     }
 
     private static func attributed(_ text: String, color: NSColor) -> NSAttributedString {
-        NSAttributedString(
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.minimumLineHeight = lineHeight
+        paragraph.maximumLineHeight = lineHeight
+        return NSAttributedString(
             string: text,
             attributes: [
-                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .medium),
-                .foregroundColor: color
+                .font: NSFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
+                .foregroundColor: color,
+                .paragraphStyle: paragraph
             ]
         )
     }
 }
 
 @MainActor
-final class StatusItemController: NSObject {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private let coordinator: MetricsCoordinator
     private let settings: SettingsStore
     private let settingsWindowController: SettingsWindowController
@@ -122,6 +133,7 @@ final class StatusItemController: NSObject {
     var renderedLength: CGFloat { statusItem.length }
     var statusButton: NSStatusBarButton? { statusItem.button }
     var isPopoverPrepared: Bool { popover.contentViewController != nil }
+    weak var popoverContentViewController: NSViewController? { popover.contentViewController }
 
     init(
         coordinator: MetricsCoordinator,
@@ -146,6 +158,7 @@ final class StatusItemController: NSObject {
         popover.behavior = .transient
         popover.animates = true
         popover.contentSize = NSSize(width: 390, height: 520)
+        popover.delegate = self
 
         coordinator.objectWillChange.sink { [weak self] in
             Task { @MainActor in
@@ -167,6 +180,7 @@ final class StatusItemController: NSObject {
         cycleTask?.cancel()
         cycleTask = nil
         dismissPopover(popover)
+        popover.contentViewController = nil
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
@@ -178,6 +192,8 @@ final class StatusItemController: NSObject {
         button.action = #selector(togglePopover)
         button.sendAction(on: [.leftMouseUp])
         button.cell?.lineBreakMode = .byClipping
+        button.cell?.usesSingleLineMode = false
+        button.cell?.wraps = true
     }
 
     private func settingsChanged() {
@@ -215,7 +231,11 @@ final class StatusItemController: NSObject {
             cycleIndex: cycleIndex
         )
         button.attributedTitle = attributedTitle
-        statusItem.length = max(18, ceil(attributedTitle.size().width) + 8)
+        let bounds = attributedTitle.boundingRect(
+            with: NSSize(width: 1_000, height: NSStatusBar.system.thickness),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        statusItem.length = max(18, ceil(bounds.width) + 8)
         button.setAccessibilityLabel(StatusItemLabelBuilder.accessibilityLabel(
             coordinator: coordinator,
             settings: settings,
@@ -248,5 +268,9 @@ final class StatusItemController: NSObject {
     func openSettings() {
         dismissPopover(popover)
         settingsWindowController.show()
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        popover.contentViewController = nil
     }
 }

@@ -1,8 +1,7 @@
 import AppKit
-import SwiftUI
 
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let settings: SettingsStore
     private let loginItem: LoginItemManager
     private let activateApplication: () -> Void
@@ -18,6 +17,7 @@ final class SettingsWindowController {
         self.settings = settings
         self.loginItem = loginItem
         self.activateApplication = activateApplication
+        super.init()
     }
 
     func show() {
@@ -33,17 +33,24 @@ final class SettingsWindowController {
         window?.orderOut(nil)
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        return false
+    }
+
     private func makeWindow() -> NSWindow {
-        let hostingController = NSHostingController(
-            rootView: MacMeterSettingsView(settings: settings, loginItem: loginItem)
-        )
-        let window = NSWindow(contentViewController: hostingController)
+        let settingsController = NativeSettingsViewController(settings: settings, loginItem: loginItem)
+        let window = NSWindow(contentViewController: settingsController)
         window.title = "MacMeter Settings"
         window.identifier = NSUserInterfaceItemIdentifier("MacMeter.Settings")
         window.styleMask = [.titled, .closable, .miniaturizable]
         window.tabbingMode = .disallowed
         window.collectionBehavior.insert(.moveToActiveSpace)
+        // Retain and reuse one small native AppKit tree. Recreating Settings on
+        // every click allowed AppKit/SwiftUI presentation caches to accumulate.
         window.isReleasedWhenClosed = false
+        window.setContentSize(settingsController.preferredContentSize)
+        window.delegate = self
         window.center()
         self.window = window
         return window

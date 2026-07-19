@@ -5,7 +5,7 @@
 - [x] Swift unit and coordinator suites pass with coverage enabled.
 - [x] All declared metric calculation/conversion decision paths pass the executable 100% semantic branch contract; production line coverage is ≥85%.
 - [x] Swift 6 Debug and Release Xcode builds pass.
-- [x] Built app is arm64, version `0.1.3`, and `LSUIElement=true`.
+- [x] Built app is arm64, version `0.1.4`, and `LSUIElement=true`.
 - [x] No outbound-network implementation is present; the current Release candidate has commit/artifact-bound runtime evidence of zero outbound or listening sockets.
 
 ## Physical validation
@@ -16,7 +16,7 @@
 - [ ] Wi-Fi/Ethernet transitions do not create spikes.
 - [ ] VPN traffic is counted once through the physical interface.
 - [ ] Launch at Login survives logout/login and handles denied approval.
-- [ ] Compact single-line all-metric and five-second Cycle modes remain readable.
+- [ ] Compact two-line all-metric and five-second Cycle modes remain readable.
 - [ ] VoiceOver announces metric names, units, and full battery direction.
 - [ ] Light, dark, increased-text, auto-hidden, and constrained menu bars pass.
 

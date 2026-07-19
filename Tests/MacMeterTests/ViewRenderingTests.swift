@@ -1,3 +1,4 @@
+import ServiceManagement
 import SwiftUI
 import XCTest
 @testable import MacMeter
@@ -18,7 +19,7 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(version.displayLabel, "Version 0.1.0 (1)")
     }
 
-    func testSettingsWindowControllerShowsAndReusesNativeWindow() throws {
+    func testSettingsWindowControllerReusesOneNativeTreeAcrossRepeatedCloseAndShow() throws {
         _ = NSApplication.shared
         let suite = "MacMeterSettingsWindowTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -35,6 +36,8 @@ final class ViewRenderingTests: XCTestCase {
 
         controller.show()
         let firstWindow = try XCTUnwrap(controller.window)
+        let firstHost = try XCTUnwrap(firstWindow.contentViewController)
+        XCTAssertTrue(firstHost is NativeSettingsViewController)
         XCTAssertTrue(firstWindow.isVisible)
         XCTAssertEqual(firstWindow.title, "MacMeter Settings")
         XCTAssertEqual(firstWindow.identifier?.rawValue, "MacMeter.Settings")
@@ -46,13 +49,103 @@ final class ViewRenderingTests: XCTestCase {
 
         firstWindow.performClose(nil)
         XCTAssertFalse(firstWindow.isVisible)
+        XCTAssertTrue(firstWindow === controller.window)
         controller.show()
         XCTAssertTrue(firstWindow.isVisible)
         XCTAssertTrue(firstWindow === controller.window)
+        XCTAssertTrue(firstHost === controller.window?.contentViewController)
         XCTAssertEqual(activationCount, 3)
 
-        controller.close()
-        XCTAssertFalse(firstWindow.isVisible)
+        for _ in 0..<25 {
+            controller.close()
+            XCTAssertFalse(firstWindow.isVisible)
+            controller.show()
+            XCTAssertTrue(firstWindow.isVisible)
+            XCTAssertTrue(firstWindow === controller.window)
+            XCTAssertTrue(firstHost === controller.window?.contentViewController)
+        }
+    }
+
+    func testNativeSettingsControlsImmediatelyPersistEveryDisplayPreference() throws {
+        let suite = "MacMeterNativeSettingsControls.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults)
+        let loginService = NativeSettingsLoginItemService()
+        let loginManager = LoginItemManager(service: loginService)
+        let controller = NativeSettingsViewController(settings: settings, loginItem: loginManager)
+        _ = controller.view
+        XCTAssertEqual(controller.tabViewItems.map(\.label), ["Metrics", "Appearance", "General", "About"])
+
+        let metricsView = try XCTUnwrap(controller.tabViewItems[0].viewController?.view)
+        let metricToggles: [(String, @MainActor () -> Bool)] = [
+            ("settings.cpu.enabled", { settings.cpuEnabled }),
+            ("settings.temperature.enabled", { settings.temperatureEnabled }),
+            ("settings.network.enabled", { settings.networkEnabled }),
+            ("settings.battery.enabled", { settings.batteryEnabled })
+        ]
+        for (identifier, value) in metricToggles {
+            let toggle: NSButton = try control(in: metricsView, identifier: identifier)
+            XCTAssertTrue(value())
+            toggle.performClick(nil)
+            XCTAssertFalse(value())
+        }
+
+        let cpuScale: NSPopUpButton = try control(in: metricsView, identifier: "settings.cpu.scale")
+        for (index, expected) in CPUScale.allCases.enumerated() {
+            cpuScale.selectItem(at: index)
+            sendAction(cpuScale)
+            XCTAssertEqual(settings.cpuScale, expected)
+        }
+
+        let temperature: NSSegmentedControl = try control(in: metricsView, identifier: "settings.temperature.unit")
+        for (index, expected) in TemperatureUnit.allCases.enumerated() {
+            temperature.selectedSegment = index
+            sendAction(temperature)
+            XCTAssertEqual(settings.temperatureUnit, expected)
+        }
+
+        let network: NSSegmentedControl = try control(in: metricsView, identifier: "settings.network.unit")
+        for (index, expected) in NetworkUnit.allCases.enumerated() {
+            network.selectedSegment = index
+            sendAction(network)
+            XCTAssertEqual(settings.networkUnit, expected)
+        }
+
+        let appearanceView = try XCTUnwrap(controller.tabViewItems[1].viewController?.view)
+        let appearance: NSSegmentedControl = try control(in: appearanceView, identifier: "settings.display.mode")
+        for (index, expected) in DisplayMode.allCases.enumerated() {
+            appearance.selectedSegment = index
+            sendAction(appearance)
+            XCTAssertEqual(settings.displayMode, expected)
+        }
+
+        let generalView = try XCTUnwrap(controller.tabViewItems[2].viewController?.view)
+        let updateRate: NSPopUpButton = try control(in: generalView, identifier: "settings.update.rate")
+        for (index, expected) in [1.0, 2.0, 5.0, 10.0].enumerated() {
+            updateRate.selectItem(at: index)
+            sendAction(updateRate)
+            XCTAssertEqual(settings.updateInterval, expected)
+        }
+
+        let launchAtLogin: NSButton = try control(in: generalView, identifier: "settings.launch.at.login")
+        launchAtLogin.performClick(nil)
+        XCTAssertEqual(loginService.registerCount, 1)
+        XCTAssertTrue(loginManager.isEnabled)
+        launchAtLogin.performClick(nil)
+        XCTAssertEqual(loginService.unregisterCount, 1)
+        XCTAssertFalse(loginManager.isEnabled)
+
+        let restored = SettingsStore(defaults: defaults)
+        XCTAssertFalse(restored.cpuEnabled)
+        XCTAssertFalse(restored.temperatureEnabled)
+        XCTAssertFalse(restored.networkEnabled)
+        XCTAssertFalse(restored.batteryEnabled)
+        XCTAssertEqual(restored.cpuScale, .summed)
+        XCTAssertEqual(restored.temperatureUnit, .fahrenheit)
+        XCTAssertEqual(restored.networkUnit, .MBps)
+        XCTAssertEqual(restored.displayMode, .cycle)
+        XCTAssertEqual(restored.updateInterval, 10)
     }
 
     func testMenuBarModesAndMetricCombinationsRender() throws {
@@ -94,9 +187,6 @@ final class ViewRenderingTests: XCTestCase {
             XCTAssertEqual(constrained.width, ideal.width, accuracy: 1, "Selection mask \(mask) compressed horizontally")
             XCTAssertLessThanOrEqual(ideal.width, 180, "Selection mask \(mask) is too wide for compact display")
             XCTAssertLessThanOrEqual(ideal.height, 24, "Selection mask \(mask) is too tall for the menu bar")
-            if mask == 15 {
-                XCTAssertLessThanOrEqual(ideal.height, 16, "All four metrics must remain on one status-bar-safe line")
-            }
         }
     }
 
@@ -116,7 +206,7 @@ final class ViewRenderingTests: XCTestCase {
 
         XCTAssertEqual(
             MenuBarPresentation.rows(for: MetricID.allCases),
-            [[.network, .cpu, .temperature, .battery]]
+            [[.network], [.cpu, .temperature, .battery]]
         )
     }
 
@@ -273,7 +363,7 @@ final class ViewRenderingTests: XCTestCase {
         }
     }
 
-    func testNativeStatusLabelUsesEightPointFontAndEverySelectedMetric() throws {
+    func testNativeStatusLabelUsesSmallFontAndEverySelectedMetric() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }
         setMetricMask(15, settings: fixture.settings)
@@ -283,10 +373,15 @@ final class ViewRenderingTests: XCTestCase {
             settings: fixture.settings,
             cycleIndex: 0
         )
-        XCTAssertEqual(label.string, "↑0.4↓3.2MB/s | 50% | 55°C | D 8.4W")
+        XCTAssertEqual(label.string, "↑0.4↓3.2MB/s\n50% | 55°C | D 8.4W")
         label.enumerateAttribute(.font, in: NSRange(location: 0, length: label.length)) { value, _, _ in
             XCTAssertEqual((value as? NSFont)?.pointSize, StatusItemLabelBuilder.fontSize)
         }
+        let batteryRange = (label.string as NSString).range(of: "D 8.4W")
+        XCTAssertEqual(
+            label.attribute(.foregroundColor, at: batteryRange.location, effectiveRange: nil) as? NSColor,
+            .systemRed
+        )
     }
 
     func testNativeStatusLabelBatteryColorsAreRedGreenAndBlue() throws {
@@ -335,9 +430,13 @@ final class ViewRenderingTests: XCTestCase {
         )
         defer { controller.close() }
 
-        XCTAssertEqual(controller.renderedTitle.string, "↑0.4↓3.2MB/s | 50% | 55°C | D 8.4W")
+        XCTAssertEqual(controller.renderedTitle.string, "↑0.4↓3.2MB/s\n50% | 55°C | D 8.4W")
         XCTAssertEqual(controller.statusButtonSubviewCount, 0, "Custom status-button subviews trigger continuous AppKit replicant snapshots")
-        XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(controller.renderedTitle.size().width) + 8)
+        let bounds = controller.renderedTitle.boundingRect(
+            with: NSSize(width: 1_000, height: NSStatusBar.system.thickness),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        XCTAssertGreaterThanOrEqual(controller.renderedLength, ceil(bounds.width) + 8)
     }
 
     func testStatusButtonOpensLazyPopoverAndSettingsActionClosesIt() {
@@ -348,8 +447,8 @@ final class ViewRenderingTests: XCTestCase {
             loginItem: LoginItemManager(),
             activateApplication: {}
         )
-        var didPresentPopover = false
-        var didDismissPopover = false
+        var presentedHostIdentities: [ObjectIdentifier] = []
+        var dismissCount = 0
         let controller = StatusItemController(
             coordinator: fixture.coordinator,
             settings: fixture.settings,
@@ -357,10 +456,10 @@ final class ViewRenderingTests: XCTestCase {
             presentPopover: { popover, button in
                 XCTAssertNotNil(popover.contentViewController)
                 XCTAssertNotNil(button.window)
-                didPresentPopover = true
+                presentedHostIdentities.append(ObjectIdentifier(popover.contentViewController!))
             },
             dismissPopover: { _ in
-                didDismissPopover = true
+                dismissCount += 1
             }
         )
         defer {
@@ -371,13 +470,31 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertFalse(controller.isPopoverPrepared)
         controller.statusButton?.performClick(nil)
         XCTAssertTrue(controller.isPopoverPrepared)
-        XCTAssertTrue(didPresentPopover)
-        XCTAssertFalse(didDismissPopover)
+        let releasedPopoverHost = WeakReference(controller.popoverContentViewController)
+        XCTAssertNotNil(releasedPopoverHost.value)
+        XCTAssertEqual(presentedHostIdentities.count, 1)
+        XCTAssertEqual(dismissCount, 0)
 
         controller.openSettings()
-        XCTAssertTrue(didDismissPopover)
+        XCTAssertEqual(dismissCount, 1)
         XCTAssertEqual(settingsWindowController.window?.identifier?.rawValue, "MacMeter.Settings")
         XCTAssertTrue(settingsWindowController.window?.isVisible == true)
+
+        controller.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
+        XCTAssertFalse(controller.isPopoverPrepared)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertNil(releasedPopoverHost.value)
+
+        controller.statusButton?.performClick(nil)
+        XCTAssertTrue(controller.isPopoverPrepared)
+        let releasedSecondPopoverHost = WeakReference(controller.popoverContentViewController)
+        XCTAssertEqual(presentedHostIdentities.count, 2)
+        XCTAssertNotEqual(presentedHostIdentities[0], presentedHostIdentities[1])
+
+        controller.popoverDidClose(Notification(name: NSPopover.didCloseNotification))
+        XCTAssertFalse(controller.isPopoverPrepared)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        XCTAssertNil(releasedSecondPopoverHost.value)
     }
 
     private func render<V: View>(_ view: V) -> NSImage? {
@@ -428,6 +545,33 @@ final class ViewRenderingTests: XCTestCase {
         settings.batteryEnabled = mask & 8 != 0
     }
 
+    private func control<Control: NSView>(
+        in root: NSView,
+        identifier: String
+    ) throws -> Control {
+        if let root = root as? Control, root.identifier?.rawValue == identifier {
+            return root
+        }
+        for subview in root.subviews {
+            if let match: Control = try? control(in: subview, identifier: identifier) {
+                return match
+            }
+        }
+        throw NSError(
+            domain: "MacMeterTests",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "Missing control \(identifier)"]
+        )
+    }
+
+    private func sendAction(_ control: NSControl) {
+        guard let action = control.action else {
+            XCTFail("Control \(control.identifier?.rawValue ?? "unknown") has no action")
+            return
+        }
+        XCTAssertTrue(NSApp.sendAction(action, to: control.target, from: control))
+    }
+
     private func makeFixture() -> (settings: SettingsStore, coordinator: MetricsCoordinator, cleanup: () -> Void) {
         let suite = "MacMeterViewTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -447,6 +591,33 @@ final class ViewRenderingTests: XCTestCase {
         coordinator.sampleNow(at: Date(timeIntervalSince1970: 1_000))
         return (settings, coordinator, { defaults.removePersistentDomain(forName: suite) })
     }
+}
+
+private final class WeakReference<Value: AnyObject> {
+    weak var value: Value?
+
+    init(_ value: Value?) {
+        self.value = value
+    }
+}
+
+@MainActor
+private final class NativeSettingsLoginItemService: LoginItemServicing {
+    var status: SMAppService.Status = .notRegistered
+    var registerCount = 0
+    var unregisterCount = 0
+
+    func register() throws {
+        registerCount += 1
+        status = .enabled
+    }
+
+    func unregister() throws {
+        unregisterCount += 1
+        status = .notRegistered
+    }
+
+    func openSystemSettings() {}
 }
 
 @MainActor
