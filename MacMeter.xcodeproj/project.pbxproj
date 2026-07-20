@@ -19,6 +19,7 @@
 		A1000000000000000000000F /* NativeSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000F /* NativeSettingsViewController.swift */; };
 		A10000000000000000000010 /* NativePopoverViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000010 /* NativePopoverViewController.swift */; };
 		A10000000000000000000011 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* Assets.xcassets */; };
+		A10000000000000000000012 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000012 /* Localization.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -38,6 +39,7 @@
 		A2000000000000000000000F /* NativeSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000010 /* NativePopoverViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePopoverViewController.swift; sourceTree = "<group>"; };
 		A20000000000000000000011 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000012 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -82,6 +84,7 @@
 				A2000000000000000000000E,
 				A2000000000000000000000F,
 				A20000000000000000000010,
+				A20000000000000000000012,
 			);
 			path = MacMeter;
 			sourceTree = "<group>";
@@ -186,6 +189,7 @@
 				A1000000000000000000000E,
 				A1000000000000000000000F,
 				A10000000000000000000010,
+				A10000000000000000000012,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -224,7 +228,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
 				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -246,7 +250,7 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
-				MARKETING_VERSION = 1.0.2;
+				MARKETING_VERSION = 1.0.3;
 				OTHER_LDFLAGS = "$(inherited) -framework IOKit -framework ServiceManagement -framework SystemConfiguration";
 				PRODUCT_BUNDLE_IDENTIFIER = com.karhoong.MacMeter;
 				PRODUCT_NAME = "$(TARGET_NAME)";

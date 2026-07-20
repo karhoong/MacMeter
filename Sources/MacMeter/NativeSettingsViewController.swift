@@ -3,6 +3,8 @@ import Combine
 
 @MainActor
 final class NativeSettingsViewController: NSTabViewController {
+    static let contentSize = NSSize(width: 560, height: 430)
+
     private let settings: SettingsStore
     private let loginItem: LoginItemManager
     private let appVersion: AppVersionInfo
@@ -17,12 +19,14 @@ final class NativeSettingsViewController: NSTabViewController {
     private let networkUnitControl = NSSegmentedControl()
     private let displayModeControl = NSSegmentedControl()
     private let updateRatePopup = NSPopUpButton()
+    private let languagePopup = NSPopUpButton()
     private let launchAtLoginToggle = NSButton(checkboxWithTitle: "Launch at Login", target: nil, action: nil)
     private let loginStatusLabel = NSTextField(labelWithString: "")
     private let loginErrorLabel = NSTextField(wrappingLabelWithString: "")
     private let openLoginSettingsButton = NSButton(title: "Open Login Items Settings", target: nil, action: nil)
 
     private let updateRates: [TimeInterval] = [1, 2, 5, 10]
+    private var renderedLanguage: AppLanguage?
 
     init(
         settings: SettingsStore,
@@ -33,7 +37,7 @@ final class NativeSettingsViewController: NSTabViewController {
         self.loginItem = loginItem
         self.appVersion = appVersion
         super.init(nibName: nil, bundle: nil)
-        title = "MacMeter Settings"
+        title = settings.localizer.text(.settingsWindowTitle)
     }
 
     @available(*, unavailable)
@@ -43,14 +47,10 @@ final class NativeSettingsViewController: NSTabViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "MacMeter Settings"
         tabStyle = .toolbar
-        preferredContentSize = NSSize(width: 560, height: 430)
+        preferredContentSize = Self.contentSize
         configureControls()
-        addTab(label: "Metrics", symbolName: "gauge.medium", viewController: makeMetricsTab())
-        addTab(label: "Appearance", symbolName: "paintbrush", viewController: makeAppearanceTab())
-        addTab(label: "General", symbolName: "gearshape", viewController: makeGeneralTab())
-        addTab(label: "About", symbolName: "info.circle", viewController: makeAboutTab())
+        rebuildLocalizedInterface()
         observeStores()
         syncControls()
     }
@@ -69,51 +69,30 @@ final class NativeSettingsViewController: NSTabViewController {
         for toggle in [cpuToggle, temperatureToggle, networkToggle, batteryToggle] {
             toggle.target = self
             toggle.action = #selector(metricToggleChanged(_:))
-            toggle.imagePosition = .imageLeading
-            toggle.imageHugsTitle = true
+            toggle.setButtonType(.switch)
         }
-        cpuToggle.image = symbol("cpu")
-        temperatureToggle.image = symbol("thermometer.medium")
-        networkToggle.image = symbol("arrow.up.arrow.down")
-        batteryToggle.image = symbol("battery.75")
 
-        CPUScale.allCases.forEach { cpuScalePopup.addItem(withTitle: $0.title) }
         cpuScalePopup.target = self
         cpuScalePopup.action = #selector(cpuScaleChanged(_:))
         cpuScalePopup.identifier = NSUserInterfaceItemIdentifier("settings.cpu.scale")
         cpuScalePopup.setAccessibilityLabel("CPU menu-bar value")
 
-        configureSegmentedControl(
-            temperatureUnitControl,
-            labels: TemperatureUnit.allCases.map { "\($0.title) (\($0.symbol))" },
-            action: #selector(temperatureUnitChanged(_:))
-        )
-        temperatureUnitControl.setAccessibilityLabel("Temperature unit")
+        configureSegmentedControl(temperatureUnitControl, count: TemperatureUnit.allCases.count, action: #selector(temperatureUnitChanged(_:)))
         temperatureUnitControl.identifier = NSUserInterfaceItemIdentifier("settings.temperature.unit")
 
-        configureSegmentedControl(
-            networkUnitControl,
-            labels: NetworkUnit.allCases.map(\.rawValue),
-            action: #selector(networkUnitChanged(_:))
-        )
-        networkUnitControl.setAccessibilityLabel("Network unit")
+        configureSegmentedControl(networkUnitControl, count: NetworkUnit.allCases.count, action: #selector(networkUnitChanged(_:)))
         networkUnitControl.identifier = NSUserInterfaceItemIdentifier("settings.network.unit")
 
-        configureSegmentedControl(
-            displayModeControl,
-            labels: DisplayMode.allCases.map(\.title),
-            action: #selector(displayModeChanged(_:))
-        )
-        displayModeControl.setAccessibilityLabel("Display mode")
+        configureSegmentedControl(displayModeControl, count: DisplayMode.allCases.count, action: #selector(displayModeChanged(_:)))
         displayModeControl.identifier = NSUserInterfaceItemIdentifier("settings.display.mode")
 
-        updateRates.forEach { interval in
-            updateRatePopup.addItem(withTitle: interval == 1 ? "1 second" : "\(Int(interval)) seconds")
-        }
         updateRatePopup.target = self
         updateRatePopup.action = #selector(updateRateChanged(_:))
         updateRatePopup.identifier = NSUserInterfaceItemIdentifier("settings.update.rate")
-        updateRatePopup.setAccessibilityLabel("Update rate")
+
+        languagePopup.target = self
+        languagePopup.action = #selector(languageChanged(_:))
+        languagePopup.identifier = NSUserInterfaceItemIdentifier("settings.language")
 
         launchAtLoginToggle.target = self
         launchAtLoginToggle.action = #selector(launchAtLoginChanged(_:))
@@ -127,52 +106,46 @@ final class NativeSettingsViewController: NSTabViewController {
         openLoginSettingsButton.action = #selector(openLoginSettings(_:))
     }
 
-    private func configureSegmentedControl(
-        _ control: NSSegmentedControl,
-        labels: [String],
-        action: Selector
-    ) {
-        control.segmentCount = labels.count
+    private func configureSegmentedControl(_ control: NSSegmentedControl, count: Int, action: Selector) {
+        control.segmentCount = count
         control.trackingMode = .selectOne
         control.target = self
         control.action = action
-        for (index, label) in labels.enumerated() {
-            control.setLabel(label, forSegment: index)
-        }
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     }
 
     private func makeMetricsTab() -> NSViewController {
+        let l = settings.localizer
         let stack = tabStack()
         stack.addArrangedSubview(settingsCard(
-            title: "Visible metrics",
+            title: l.text(.visibleMetrics),
             symbolName: "eye",
             views: [cpuToggle, temperatureToggle, networkToggle, batteryToggle]
         ))
         stack.addArrangedSubview(settingsCard(
-            title: "Display values",
+            title: l.text(.displayValues),
             symbolName: "textformat.123",
             views: [
-                settingRow(label: "CPU convention", control: cpuScalePopup),
-                settingRow(label: "Temperature", control: temperatureUnitControl),
-                settingRow(label: "Network unit", control: networkUnitControl)
+                settingRow(label: l.text(.cpuConvention), control: cpuScalePopup),
+                settingRow(label: l.text(.temperature), control: temperatureUnitControl),
+                settingRow(label: l.text(.networkUnit), control: networkUnitControl)
             ]
         ))
         return tabController(stack: stack)
     }
 
     private func makeAppearanceTab() -> NSViewController {
+        let l = settings.localizer
         let stack = tabStack()
-        let explanation = NSTextField(wrappingLabelWithString:
-            "Compact keeps selected metrics in two balanced rows. Network stays on top; Cycle rotates one metric every five seconds."
-        )
+        let explanation = NSTextField(wrappingLabelWithString: l.text(.layoutExplanation))
         explanation.textColor = .secondaryLabelColor
         explanation.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         explanation.maximumNumberOfLines = 3
         stack.addArrangedSubview(settingsCard(
-            title: "Menu bar layout",
+            title: l.text(.menuBarLayout),
             symbolName: "rectangle.split.2x1",
             views: [
-                settingRow(label: "Display mode", control: displayModeControl),
+                settingRow(label: l.text(.displayMode), control: displayModeControl),
                 explanation
             ]
         ))
@@ -180,14 +153,20 @@ final class NativeSettingsViewController: NSTabViewController {
     }
 
     private func makeGeneralTab() -> NSViewController {
+        let l = settings.localizer
         let stack = tabStack()
         stack.addArrangedSubview(settingsCard(
-            title: "Sampling",
+            title: l.text(.sampling),
             symbolName: "clock.arrow.circlepath",
-            views: [settingRow(label: "Update rate", control: updateRatePopup)]
+            views: [settingRow(label: l.text(.updateRate), control: updateRatePopup)]
         ))
         stack.addArrangedSubview(settingsCard(
-            title: "Startup",
+            title: l.text(.language),
+            symbolName: "globe",
+            views: [settingRow(label: l.text(.interfaceLanguage), control: languagePopup)]
+        ))
+        stack.addArrangedSubview(settingsCard(
+            title: l.text(.startup),
             symbolName: "power",
             views: [launchAtLoginToggle, loginStatusLabel, loginErrorLabel, openLoginSettingsButton]
         ))
@@ -195,6 +174,7 @@ final class NativeSettingsViewController: NSTabViewController {
     }
 
     private func makeAboutTab() -> NSViewController {
+        let l = settings.localizer
         let content = tabStack(alignment: .centerX, spacing: 12)
         let icon = NSImageView(image: NSApp.applicationIconImage)
         icon.imageScaling = .scaleProportionallyUpOrDown
@@ -206,14 +186,12 @@ final class NativeSettingsViewController: NSTabViewController {
         ])
         let name = NSTextField(labelWithString: "MacMeter")
         name.font = .boldSystemFont(ofSize: 20)
-        let version = NSTextField(labelWithString: appVersion.displayLabel)
-        let privacy = NSTextField(wrappingLabelWithString:
-            "Private by design: MacMeter reads local system counters and makes no network requests."
-        )
+        let version = NSTextField(labelWithString: l.version(appVersion))
+        let privacy = NSTextField(wrappingLabelWithString: l.text(.privacy))
         privacy.alignment = .center
         privacy.textColor = .secondaryLabelColor
-        privacy.maximumNumberOfLines = 2
-        let platform = NSTextField(labelWithString: "Apple Silicon · macOS 13+")
+        privacy.maximumNumberOfLines = 4
+        let platform = NSTextField(labelWithString: l.text(.platform))
         platform.textColor = .secondaryLabelColor
         platform.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
         [icon, name, version, privacy, platform].forEach(content.addArrangedSubview)
@@ -232,14 +210,13 @@ final class NativeSettingsViewController: NSTabViewController {
             NSLayoutConstraint.activate([
                 content.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
                 content.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-                content.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor),
-                content.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor),
+                content.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 48),
+                content.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -48),
                 content.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor),
                 content.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor)
             ])
         }
         card.heightAnchor.constraint(greaterThanOrEqualToConstant: 260).isActive = true
-        card.widthAnchor.constraint(greaterThanOrEqualToConstant: 480).isActive = true
         let stack = tabStack()
         stack.addArrangedSubview(card)
         return tabController(stack: stack)
@@ -255,8 +232,8 @@ final class NativeSettingsViewController: NSTabViewController {
 
     private func tabController(stack: NSStackView, centerVertically: Bool = false) -> NSViewController {
         let controller = NSViewController()
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
+        controller.preferredContentSize = Self.contentSize
+        let container = NSView(frame: NSRect(origin: .zero, size: Self.contentSize))
         stack.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(stack)
         var constraints = [
@@ -291,16 +268,18 @@ final class NativeSettingsViewController: NSTabViewController {
     }
 
     private func settingRow(label: String, control: NSView) -> NSStackView {
-        let title = NSTextField(labelWithString: label)
+        let title = NSTextField(wrappingLabelWithString: label)
         title.textColor = .secondaryLabelColor
-        title.widthAnchor.constraint(equalToConstant: 135).isActive = true
+        title.maximumNumberOfLines = 2
+        title.widthAnchor.constraint(equalToConstant: 145).isActive = true
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let row = NSStackView(views: [title, spacer, control])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 8
-        row.widthAnchor.constraint(greaterThanOrEqualToConstant: 440).isActive = true
+        control.setContentHuggingPriority(.defaultHigh, for: .horizontal)
+        control.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return row
     }
 
@@ -329,7 +308,13 @@ final class NativeSettingsViewController: NSTabViewController {
         content.alignment = .leading
         content.spacing = 10
         content.addArrangedSubview(header)
-        views.forEach(content.addArrangedSubview)
+        for view in views {
+            content.addArrangedSubview(view)
+            view.widthAnchor.constraint(lessThanOrEqualTo: content.widthAnchor).isActive = true
+            if view is NSStackView || view is NSTextField {
+                view.widthAnchor.constraint(equalTo: content.widthAnchor).isActive = true
+            }
+        }
         content.translatesAutoresizingMaskIntoConstraints = false
         card.contentView?.addSubview(content)
         if let contentView = card.contentView {
@@ -378,6 +363,9 @@ final class NativeSettingsViewController: NSTabViewController {
     }
 
     private func syncControls() {
+        if renderedLanguage != settings.language {
+            rebuildLocalizedInterface()
+        }
         cpuToggle.state = settings.cpuEnabled ? .on : .off
         temperatureToggle.state = settings.temperatureEnabled ? .on : .off
         networkToggle.state = settings.networkEnabled ? .on : .off
@@ -387,11 +375,71 @@ final class NativeSettingsViewController: NSTabViewController {
         networkUnitControl.selectedSegment = NetworkUnit.allCases.firstIndex(of: settings.networkUnit) ?? 0
         displayModeControl.selectedSegment = DisplayMode.allCases.firstIndex(of: settings.displayMode) ?? 0
         updateRatePopup.selectItem(at: updateRates.firstIndex(of: settings.updateInterval) ?? 1)
+        languagePopup.selectItem(at: AppLanguage.allCases.firstIndex(of: settings.language) ?? 0)
         launchAtLoginToggle.state = loginItem.isEnabled ? .on : .off
-        loginStatusLabel.stringValue = loginItem.statusText
+        loginStatusLabel.stringValue = localizedLoginStatus()
         loginErrorLabel.stringValue = loginItem.errorMessage ?? ""
         loginErrorLabel.isHidden = loginItem.errorMessage == nil
         openLoginSettingsButton.isHidden = loginItem.status != .requiresApproval
+    }
+
+    private func rebuildLocalizedInterface() {
+        let selectedIndex = max(0, min(selectedTabViewItemIndex, 3))
+        renderedLanguage = settings.language
+        let l = settings.localizer
+        title = l.text(.settingsWindowTitle)
+        relocalizeControls(using: l)
+        while let first = tabViewItems.first {
+            removeTabViewItem(first)
+        }
+        addTab(label: l.text(.metrics), symbolName: "gauge.medium", viewController: makeMetricsTab())
+        addTab(label: l.text(.appearance), symbolName: "paintbrush", viewController: makeAppearanceTab())
+        addTab(label: l.text(.general), symbolName: "gearshape", viewController: makeGeneralTab())
+        addTab(label: l.text(.about), symbolName: "info.circle", viewController: makeAboutTab())
+        selectedTabViewItemIndex = selectedIndex
+        view.window?.title = l.text(.settingsWindowTitle)
+    }
+
+    private func relocalizeControls(using l: Localizer) {
+        cpuToggle.title = l.text(.cpuUsage)
+        temperatureToggle.title = l.text(.socTemperature)
+        networkToggle.title = l.text(.networkSpeed)
+        batteryToggle.title = l.text(.batteryPower)
+        launchAtLoginToggle.title = l.text(.launchAtLogin)
+        openLoginSettingsButton.title = l.text(.openLoginSettings)
+
+        cpuScalePopup.removeAllItems()
+        cpuScalePopup.addItems(withTitles: [l.text(.overallConvention), l.text(.allCoresConvention)])
+        cpuScalePopup.setAccessibilityLabel(l.text(.cpuConvention))
+
+        temperatureUnitControl.setLabel("\(l.text(.celsius)) (°C)", forSegment: 0)
+        temperatureUnitControl.setLabel("\(l.text(.fahrenheit)) (°F)", forSegment: 1)
+        temperatureUnitControl.setAccessibilityLabel(l.text(.temperature))
+        for (index, unit) in NetworkUnit.allCases.enumerated() {
+            networkUnitControl.setLabel(unit.rawValue, forSegment: index)
+        }
+        networkUnitControl.setAccessibilityLabel(l.text(.networkUnit))
+        displayModeControl.setLabel(l.text(.compact), forSegment: 0)
+        displayModeControl.setLabel(l.text(.cycle), forSegment: 1)
+        displayModeControl.setAccessibilityLabel(l.text(.displayMode))
+
+        updateRatePopup.removeAllItems()
+        updateRatePopup.addItems(withTitles: updateRates.map(l.updateRate))
+        updateRatePopup.setAccessibilityLabel(l.text(.updateRate))
+        languagePopup.removeAllItems()
+        languagePopup.addItems(withTitles: AppLanguage.allCases.map(l.languageTitle))
+        languagePopup.setAccessibilityLabel(l.text(.interfaceLanguage))
+    }
+
+    private func localizedLoginStatus() -> String {
+        let l = settings.localizer
+        switch loginItem.status {
+        case .enabled: return l.text(.enabled)
+        case .requiresApproval: return l.text(.approvalRequired)
+        case .notRegistered: return l.text(.disabled)
+        case .notFound: return l.text(.installRequired)
+        @unknown default: return l.text(.unknown)
+        }
     }
 
     @objc private func metricToggleChanged(_ sender: NSButton) {
@@ -427,6 +475,11 @@ final class NativeSettingsViewController: NSTabViewController {
     @objc private func updateRateChanged(_ sender: NSPopUpButton) {
         guard updateRates.indices.contains(sender.indexOfSelectedItem) else { return }
         settings.updateInterval = updateRates[sender.indexOfSelectedItem]
+    }
+
+    @objc private func languageChanged(_ sender: NSPopUpButton) {
+        guard AppLanguage.allCases.indices.contains(sender.indexOfSelectedItem) else { return }
+        settings.language = AppLanguage.allCases[sender.indexOfSelectedItem]
     }
 
     @objc private func launchAtLoginChanged(_ sender: NSButton) {

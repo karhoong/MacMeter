@@ -40,6 +40,9 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertTrue(firstWindow.isVisible)
         XCTAssertEqual(firstWindow.title, "MacMeter Settings")
         XCTAssertEqual(firstWindow.identifier?.rawValue, "MacMeter.Settings")
+        XCTAssertEqual(firstWindow.contentView?.bounds.size, NativeSettingsViewController.contentSize)
+        XCTAssertEqual(firstWindow.contentMinSize, NativeSettingsViewController.contentSize)
+        XCTAssertEqual(firstWindow.contentMaxSize, NativeSettingsViewController.contentSize)
         XCTAssertEqual(activationCount, 1)
 
         controller.show()
@@ -99,6 +102,7 @@ final class ViewRenderingTests: XCTestCase {
         ]
         for (identifier, value) in metricToggles {
             let toggle: NSButton = try control(in: metricsView, identifier: identifier)
+            XCTAssertNotNil(toggle.image, "Native checkboxes must retain their system checkbox indicator")
             XCTAssertTrue(value())
             toggle.performClick(nil)
             XCTAssertFalse(value())
@@ -149,6 +153,15 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(loginService.unregisterCount, 1)
         XCTAssertFalse(loginManager.isEnabled)
 
+        let language: NSPopUpButton = try control(in: generalView, identifier: "settings.language")
+        let malayIndex = try XCTUnwrap(AppLanguage.allCases.firstIndex(of: .malay))
+        language.selectItem(at: malayIndex)
+        sendAction(language)
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertEqual(settings.language, .malay)
+        XCTAssertEqual(controller.title, "Tetapan MacMeter")
+        XCTAssertEqual(controller.tabViewItems.map(\.label), ["Metrik", "Penampilan", "Umum", "Perihal"])
+
         let restored = SettingsStore(defaults: defaults)
         XCTAssertFalse(restored.cpuEnabled)
         XCTAssertFalse(restored.temperatureEnabled)
@@ -159,6 +172,55 @@ final class ViewRenderingTests: XCTestCase {
         XCTAssertEqual(restored.networkUnit, .MBps)
         XCTAssertEqual(restored.displayMode, .cycle)
         XCTAssertEqual(restored.updateInterval, 10)
+        XCTAssertEqual(restored.language, .malay)
+    }
+
+    func testSettingsTabsStayInsideOneFixedWidthAcrossLongTextLanguages() throws {
+        let suite = "MacMeterSettingsFixedWidth.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = SettingsStore(defaults: defaults)
+        let controller = NativeSettingsViewController(
+            settings: settings,
+            loginItem: LoginItemManager(service: NativeSettingsLoginItemService())
+        )
+        let root = controller.view
+        root.frame = NSRect(origin: .zero, size: NativeSettingsViewController.contentSize)
+        root.appearance = NSAppearance(named: .darkAqua)
+        XCTAssertEqual(controller.preferredContentSize, NativeSettingsViewController.contentSize)
+
+        for language in [AppLanguage.english, .simplifiedChinese, .german, .russian, .arabic, .hindi] {
+            settings.language = language
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02))
+            XCTAssertEqual(controller.tabViewItems.count, 4)
+
+            for index in controller.tabViewItems.indices {
+                controller.selectedTabViewItemIndex = index
+                root.layoutSubtreeIfNeeded()
+                let tabRoot = try XCTUnwrap(controller.tabViewItems[index].viewController?.view)
+                tabRoot.layoutSubtreeIfNeeded()
+                let cards = descendants(of: tabRoot).compactMap { $0 as? NSBox }.filter { $0.boxType == .custom }
+                XCTAssertFalse(cards.isEmpty, "Expected at least one settings card for tab \(index)")
+                let frames = cards.map { $0.convert($0.bounds, to: tabRoot) }
+                for frame in frames {
+                    XCTAssertGreaterThanOrEqual(frame.minX, 22, "Card escaped left edge in \(language.rawValue)")
+                    XCTAssertLessThanOrEqual(frame.maxX, tabRoot.bounds.maxX - 22, "Card escaped right edge in \(language.rawValue)")
+                }
+                let widths = frames.map(\.width)
+                XCTAssertLessThanOrEqual((widths.max() ?? 0) - (widths.min() ?? 0), 1)
+                if let captureDirectory = ProcessInfo.processInfo.environment["MACMETER_DESIGN_CAPTURE_DIR"] {
+                    root.needsDisplay = true
+                    root.displayIfNeeded()
+                    let representation = try XCTUnwrap(root.bitmapImageRepForCachingDisplay(in: root.bounds))
+                    root.cacheDisplay(in: root.bounds, to: representation)
+                    let data = try XCTUnwrap(representation.representation(using: .png, properties: [:]))
+                    let directory = URL(fileURLWithPath: captureDirectory, isDirectory: true)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let name = "settings-\(language.rawValue)-tab\(index)-dark.png"
+                    try data.write(to: directory.appendingPathComponent(name))
+                }
+            }
+        }
     }
 
     func testNativeSettingsTabsRenderInLightAndDarkAppearances() throws {
@@ -372,7 +434,7 @@ final class ViewRenderingTests: XCTestCase {
             cycleIndex: 0
         )
         XCTAssertTrue(title.string.contains("—"))
-        XCTAssertTrue(accessibility.contains("unavailable"))
+        XCTAssertTrue(accessibility.lowercased().contains("unavailable"))
     }
 
     func testNativeStatusLabelUsesReadableBoldFontColorsAndEverySelectedMetric() throws {
@@ -713,6 +775,10 @@ final class ViewRenderingTests: XCTestCase {
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "Missing control \(identifier)"]
         )
+    }
+
+    private func descendants(of root: NSView) -> [NSView] {
+        root.subviews + root.subviews.flatMap { descendants(of: $0) }
     }
 
     private func sendAction(_ control: NSControl) {

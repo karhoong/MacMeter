@@ -13,6 +13,7 @@ final class SettingsStore: ObservableObject {
         static let networkUnit = "metrics.network.unit"
         static let displayMode = "appearance.mode"
         static let updateInterval = "general.updateInterval"
+        static let language = "general.language"
     }
 
     private let defaults: UserDefaults
@@ -26,6 +27,7 @@ final class SettingsStore: ObservableObject {
     @Published var networkUnit: NetworkUnit { didSet { defaults.set(networkUnit.rawValue, forKey: Key.networkUnit) } }
     @Published var displayMode: DisplayMode { didSet { defaults.set(displayMode.rawValue, forKey: Key.displayMode) } }
     @Published var updateInterval: TimeInterval { didSet { defaults.set(updateInterval, forKey: Key.updateInterval) } }
+    @Published var language: AppLanguage { didSet { defaults.set(language.rawValue, forKey: Key.language) } }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -40,6 +42,7 @@ final class SettingsStore: ObservableObject {
         displayMode = DisplayMode(rawValue: storedDisplayMode ?? "") ?? .compact
         let storedInterval = defaults.double(forKey: Key.updateInterval)
         updateInterval = [1.0, 2.0, 5.0, 10.0].contains(storedInterval) ? storedInterval : 2.0
+        language = AppLanguage(rawValue: defaults.string(forKey: Key.language) ?? "") ?? .system
         if storedDisplayMode == "default" {
             defaults.set(DisplayMode.compact.rawValue, forKey: Key.displayMode)
         }
@@ -55,4 +58,6 @@ final class SettingsStore: ObservableObject {
             }
         }
     }
+
+    var localizer: Localizer { Localizer(selection: language) }
 }

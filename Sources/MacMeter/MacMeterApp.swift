@@ -22,13 +22,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func show() {
         let settingsWindow = window ?? makeWindow()
-        settingsWindow.title = "MacMeter Settings"
+        settingsWindow.title = settings.localizer.text(.settingsWindowTitle)
         if settingsWindow.isMiniaturized {
             settingsWindow.deminiaturize(nil)
         }
         activateApplication()
         settingsWindow.makeKeyAndOrderFront(nil)
-        settingsWindow.title = "MacMeter Settings"
+        settingsWindow.title = settings.localizer.text(.settingsWindowTitle)
     }
 
     func close() {
@@ -42,9 +42,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow() -> NSWindow {
         let settingsController = NativeSettingsViewController(settings: settings, loginItem: loginItem)
-        settingsController.title = "MacMeter Settings"
+        settingsController.title = settings.localizer.text(.settingsWindowTitle)
         let window = NSWindow(contentViewController: settingsController)
-        window.title = "MacMeter Settings"
+        window.title = settings.localizer.text(.settingsWindowTitle)
         window.titleVisibility = .visible
         window.toolbarStyle = .preference
         window.identifier = NSUserInterfaceItemIdentifier("MacMeter.Settings")
@@ -54,7 +54,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         // Retain and reuse one small native AppKit tree. Recreating Settings on
         // every click allowed AppKit/SwiftUI presentation caches to accumulate.
         window.isReleasedWhenClosed = false
-        window.setContentSize(settingsController.preferredContentSize)
+        window.setContentSize(NativeSettingsViewController.contentSize)
+        window.contentMinSize = NativeSettingsViewController.contentSize
+        window.contentMaxSize = NativeSettingsViewController.contentSize
         window.delegate = self
         window.center()
         self.window = window

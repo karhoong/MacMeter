@@ -18,6 +18,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(settings.networkUnit, .MBps)
         XCTAssertEqual(settings.displayMode, .compact)
         XCTAssertEqual(settings.updateInterval, 2)
+        XCTAssertEqual(settings.language, .system)
     }
 
     func testSettingsPersistAcrossInstances() {
@@ -35,6 +36,7 @@ final class SettingsStoreTests: XCTestCase {
         settings?.networkUnit = .Kbps
         settings?.displayMode = .cycle
         settings?.updateInterval = 5
+        settings?.language = .malay
         settings = nil
 
         let restored = SettingsStore(defaults: defaults)
@@ -47,6 +49,7 @@ final class SettingsStoreTests: XCTestCase {
         XCTAssertEqual(restored.networkUnit, .Kbps)
         XCTAssertEqual(restored.displayMode, .cycle)
         XCTAssertEqual(restored.updateInterval, 5)
+        XCTAssertEqual(restored.language, .malay)
     }
 
     func testRemovedDefaultModeMigratesToCompact() {

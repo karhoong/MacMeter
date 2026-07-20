@@ -94,6 +94,32 @@ final class NativePopoverViewControllerTests: XCTestCase {
         XCTAssertEqual(try value(in: root, metric: .temperature, name: "Sensors"), "3")
     }
 
+    func testSelectedLanguageUpdatesPopoverWithoutRebuildingItsNativeTree() throws {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        let controller = makeController(fixture)
+        let root = controller.view
+        let originalCPUSection = try XCTUnwrap(controller.sectionViews[.cpu])
+
+        fixture.settings.language = .simplifiedChinese
+        controller.refreshFromModel()
+
+        XCTAssertTrue(originalCPUSection === controller.sectionViews[.cpu])
+        XCTAssertEqual(originalCPUSection.sectionTitle, "CPU")
+        XCTAssertEqual(controller.sectionViews[.temperature]?.sectionTitle, "SoC 温度")
+        XCTAssertEqual(controller.sectionViews[.network]?.sectionTitle, "网络")
+        XCTAssertEqual(controller.sectionViews[.battery]?.sectionTitle, "电池功率")
+        XCTAssertEqual(
+            try label(in: root, identifier: NativePopoverViewController.Identifier.version).stringValue,
+            "版本 0.1.5 (1)"
+        )
+        let settingsButton: NSButton = try control(in: root, identifier: NativePopoverViewController.Identifier.settingsButton)
+        let quitButton: NSButton = try control(in: root, identifier: NativePopoverViewController.Identifier.quitButton)
+        XCTAssertEqual(settingsButton.title, "设置…")
+        XCTAssertEqual(quitButton.title, "退出")
+        XCTAssertEqual(controller.coreRowView(for: 0)?.kindLabel.accessibilityLabel(), "能效核")
+    }
+
     func testNetworkRendersAllFourUnits() throws {
         let fixture = makeFixture()
         defer { fixture.cleanup() }

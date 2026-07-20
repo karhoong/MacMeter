@@ -17,6 +17,7 @@ if macmeter_validate_release_version "1.0.1" "" 2>/dev/null; then
 fi
 macmeter_validate_release_version "1.0.1" "pass"
 macmeter_validate_release_version "1.0.2" "pass"
+macmeter_validate_release_version "1.0.3" "pass"
 if macmeter_validate_release_version "1.1.0" "pass" 2>/dev/null; then
   echo "Unapproved minor version unexpectedly passed" >&2
   exit 1

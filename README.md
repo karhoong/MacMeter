@@ -68,6 +68,9 @@ Intel Macs and macOS versions earlier than 13 are not supported.
 - Refresh interval choices of 1, 2, 5, or 10 seconds; default is 2 seconds
 - Launch at Login through `SMAppService.mainApp`
 - Native Settings window with Metrics, Appearance, General, and About sections
+- Fixed-width Settings canvas keeps every card and control inside the same viewport, including longer translated copy
+- Native checkboxes make enabled Visible metrics unambiguous
+- System-language detection by default, with an immediate language picker in General for English, Simplified and Traditional Chinese, Japanese, Korean, Spanish, French, German, Portuguese, Italian, Russian, Arabic, Hindi, Malay, Indonesian, Thai, and Vietnamese
 - Icon-led metric cards and clear spacing in both the details popover and Settings
 - Settings persist immediately in `UserDefaults`
 - Clicking the menu-bar item opens full readings, per-core CPU rows, availability explanations, last-update time, Settings, version, and Quit
@@ -163,7 +166,7 @@ The script builds, signs with the hardened runtime, verifies the signature, crea
 
 ## Version
 
-The first owner-approved stable release was **1.0.0**. The current interface refinement is **1.0.2**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
+The first owner-approved stable release was **1.0.0**. The current interface refinement is **1.0.3**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
 
 ## License
 

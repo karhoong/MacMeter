@@ -239,6 +239,7 @@ final class NativePopoverViewController: NSViewController {
     func refreshFromModel() {
         guard isViewLoaded else { return }
         refreshCount += 1
+        applyLocalization()
 
         updateCPU()
         updateTemperature()
@@ -251,12 +252,35 @@ final class NativePopoverViewController: NSViewController {
         sectionViews[.battery]?.isHidden = !settings.batteryEnabled
 
         if let date = coordinator.lastUpdated {
-            updatedLabel.stringValue = "Updated \(timeFormatter.string(from: date))"
-            updatedLabel.setAccessibilityLabel("Last updated \(timeFormatter.string(from: date))")
+            let time = timeFormatter.string(from: date)
+            updatedLabel.stringValue = settings.localizer.formatted(.updated, time)
+            updatedLabel.setAccessibilityLabel(settings.localizer.formatted(.lastUpdated, time))
         } else {
-            updatedLabel.stringValue = "Waiting for data"
-            updatedLabel.setAccessibilityLabel("Waiting for data")
+            updatedLabel.stringValue = settings.localizer.text(.waitingForData)
+            updatedLabel.setAccessibilityLabel(settings.localizer.text(.waitingForData))
         }
+    }
+
+    private func applyLocalization() {
+        let l = settings.localizer
+        timeFormatter.locale = l.locale
+        versionLabel.stringValue = l.version(appVersion)
+        versionLabel.setAccessibilityLabel(l.version(appVersion))
+        settingsButton.title = l.text(.settings)
+        settingsButton.setAccessibilityLabel(l.text(.openSettingsAccessibility))
+        quitButton.title = l.text(.quit)
+        quitButton.setAccessibilityLabel(l.text(.quitAccessibility))
+        sectionViews[.cpu]?.sectionTitle = l.text(.cpu)
+        sectionViews[.temperature]?.sectionTitle = l.text(.socTemperature)
+        sectionViews[.network]?.sectionTitle = l.text(.network)
+        sectionViews[.battery]?.sectionTitle = l.text(.batteryPower)
+        cpuOverallRow.title = l.text(.overall)
+        cpuSummedRow.title = l.text(.allCores)
+        temperatureValueRow.title = l.text(.hottest)
+        temperatureSensorRow.title = l.text(.sensors)
+        networkInboundRow.title = l.text(.inbound)
+        networkOutboundRow.title = l.text(.outbound)
+        networkInterfacesRow.title = l.text(.interfaces)
     }
 
     private func observeModel() {
@@ -335,7 +359,7 @@ final class NativePopoverViewController: NSViewController {
     private func updateCPU() {
         guard let section = sectionViews[.cpu] else { return }
         guard let reading = coordinator.cpu.value else {
-            section.showUnavailable(coordinator.cpu.reason)
+            section.showUnavailable(localizedUnavailableReason(coordinator.cpu.reason))
             return
         }
 
@@ -369,7 +393,7 @@ final class NativePopoverViewController: NSViewController {
                 row = NativePopoverCoreRowView(coreID: reading.id)
                 coreRowViews[reading.id] = row
             }
-            row.update(reading)
+            row.update(reading, localizer: settings.localizer)
         }
 
         let arrangedIDs = cpuCoreStack.arrangedSubviews.compactMap {
@@ -391,7 +415,7 @@ final class NativePopoverViewController: NSViewController {
     private func updateTemperature() {
         guard let section = sectionViews[.temperature] else { return }
         guard let reading = coordinator.temperature.value else {
-            section.showUnavailable(coordinator.temperature.reason)
+            section.showUnavailable(localizedUnavailableReason(coordinator.temperature.reason))
             return
         }
 
@@ -409,7 +433,7 @@ final class NativePopoverViewController: NSViewController {
     private func updateNetwork() {
         guard let section = sectionViews[.network] else { return }
         guard let reading = coordinator.network.value else {
-            section.showUnavailable(coordinator.network.reason)
+            section.showUnavailable(localizedUnavailableReason(coordinator.network.reason))
             return
         }
 
@@ -425,16 +449,33 @@ final class NativePopoverViewController: NSViewController {
     private func updateBattery() {
         guard let section = sectionViews[.battery] else { return }
         guard let reading = coordinator.battery.value else {
-            section.showUnavailable(coordinator.battery.reason)
+            section.showUnavailable(localizedUnavailableReason(coordinator.battery.reason))
             return
         }
 
         section.showAvailable()
-        batteryPowerRow.title = reading.direction.spokenLabel
+        switch reading.direction {
+        case .charging: batteryPowerRow.title = settings.localizer.text(.charging)
+        case .draining: batteryPowerRow.title = settings.localizer.text(.draining)
+        case .idle: batteryPowerRow.title = settings.localizer.text(.idle)
+        }
         batteryPowerRow.value = MetricFormatting.battery(reading)
         batteryPowerRow.valueColor = Self.batteryColor(reading.direction)
         section.setAccentColor(Self.batteryColor(reading.direction))
         batteryPowerRow.setAccessibilityLabel(MetricAccessibility.battery(reading))
+    }
+
+    private func localizedUnavailableReason(_ reason: String?) -> String {
+        guard let reason else { return settings.localizer.text(.unavailable) }
+        if settings.localizer.language == .english { return reason }
+        if reason.localizedCaseInsensitiveContains("waiting")
+            || reason.localizedCaseInsensitiveContains("collecting") {
+            return settings.localizer.text(.waitingForData)
+        }
+        if reason.localizedCaseInsensitiveContains("disabled") {
+            return settings.localizer.text(.disabled)
+        }
+        return settings.localizer.text(.unavailable)
     }
 
     @objc private func openSettingsPressed() {
@@ -531,6 +572,11 @@ final class NativePopoverMetricSectionView: NSBox {
     private let titleLabel: NSTextField
     private(set) var availableView: NSView?
     private(set) var unavailableLabel: NSTextField
+
+    var sectionTitle: String {
+        get { titleLabel.stringValue }
+        set { titleLabel.stringValue = newValue }
+    }
 
     init(metric: MetricID, title: String, symbolName: String) {
         self.metric = metric
@@ -698,18 +744,25 @@ final class NativePopoverCoreRowView: NSStackView {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func update(_ reading: CoreReading) {
+    func update(_ reading: CoreReading, localizer: Localizer = Localizer(selection: .english)) {
+        coreLabel.stringValue = "\(localizer.text(.core)) \(reading.id)"
         kindLabel.stringValue = reading.kind.shortLabel
         switch reading.kind {
         case .efficiency: kindLabel.textColor = .systemGreen
         case .performance: kindLabel.textColor = .systemOrange
         case .unknown: kindLabel.textColor = .secondaryLabelColor
         }
-        kindLabel.setAccessibilityLabel(reading.kind.displayName)
+        let kindName: String
+        switch reading.kind {
+        case .efficiency: kindName = localizer.text(.efficiency)
+        case .performance: kindName = localizer.text(.performance)
+        case .unknown: kindName = localizer.text(.unknown)
+        }
+        kindLabel.setAccessibilityLabel(kindName)
         valueLabel.stringValue = MetricFormatting.percent(reading.utilization)
         valueLabel.textColor = MetricStatusPalette.cpu(normalizedPercent: reading.utilization)
         setAccessibilityLabel(
-            "Core \(reading.id), \(reading.kind.displayName), \(MetricFormatting.percent(reading.utilization))"
+            "\(localizer.text(.core)) \(reading.id), \(kindName), \(MetricFormatting.percent(reading.utilization))"
         )
     }
 }

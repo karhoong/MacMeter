@@ -105,25 +105,34 @@ enum StatusItemLabelBuilder {
         cycleIndex: Int
     ) -> String {
         let enabled = settings.enabledMetrics
-        guard !enabled.isEmpty else { return "MacMeter. No metrics enabled" }
+        let l = settings.localizer
+        guard !enabled.isEmpty else { return l.text(.noMetricsEnabled) }
         let metrics = settings.displayMode == .cycle
             ? [enabled[cycleIndex % enabled.count]]
             : MenuBarPresentation.rows(for: enabled).flatMap { $0 }
         return metrics.map { metric in
             switch metric {
             case .cpu:
-                guard let reading = coordinator.cpu.value else { return "CPU unavailable" }
+                guard let reading = coordinator.cpu.value else { return "\(l.text(.cpu)) \(l.text(.unavailable))" }
                 let value = settings.cpuScale == .normalized ? reading.normalized : reading.summed
-                return MetricAccessibility.cpu(value)
+                return "\(l.text(.cpu)), \(MetricFormatting.percent(value))"
             case .temperature:
-                guard let reading = coordinator.temperature.value else { return "SoC temperature unavailable" }
-                return MetricAccessibility.temperature(reading.hottestCelsius, unit: settings.temperatureUnit)
+                guard let reading = coordinator.temperature.value else { return "\(l.text(.socTemperature)) \(l.text(.unavailable))" }
+                return "\(l.text(.socTemperature)), \(MetricFormatting.temperature(reading.hottestCelsius, unit: settings.temperatureUnit))"
             case .network:
-                guard let reading = coordinator.network.value else { return "Network speed unavailable" }
-                return MetricAccessibility.network(reading, unit: settings.networkUnit)
+                guard let reading = coordinator.network.value else { return "\(l.text(.networkSpeed)) \(l.text(.unavailable))" }
+                let inbound = MetricFormatting.network(bytesPerSecond: reading.inboundBytesPerSecond, unit: settings.networkUnit)
+                let outbound = MetricFormatting.network(bytesPerSecond: reading.outboundBytesPerSecond, unit: settings.networkUnit)
+                return "\(l.text(.inbound)) \(inbound) \(settings.networkUnit.rawValue), \(l.text(.outbound)) \(outbound) \(settings.networkUnit.rawValue)"
             case .battery:
-                guard let reading = coordinator.battery.value else { return "Battery power unavailable" }
-                return MetricAccessibility.battery(reading)
+                guard let reading = coordinator.battery.value else { return "\(l.text(.batteryPower)) \(l.text(.unavailable))" }
+                let direction: String
+                switch reading.direction {
+                case .charging: direction = l.text(.charging)
+                case .draining: direction = l.text(.draining)
+                case .idle: direction = l.text(.idle)
+                }
+                return "\(l.text(.batteryPower)), \(direction), \(MetricFormatting.decimal(reading.watts)) W"
             }
         }.joined(separator: ", ")
     }
