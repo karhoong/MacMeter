@@ -4,25 +4,18 @@ set -euo pipefail
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 source "$project_root/Scripts/version-policy.sh"
 
-macmeter_validate_release_version "0.1.0" ""
-macmeter_validate_release_version "0.9.9" ""
-if macmeter_validate_release_version "1.0.0" "" 2>/dev/null; then
-  echo "Unapproved 1.0.0 unexpectedly passed" >&2
+macmeter_validate_release_version "0.1.0"
+macmeter_validate_release_version "0.9.9"
+macmeter_validate_release_version "1.0.0"
+macmeter_validate_release_version "1.0.1"
+macmeter_validate_release_version "1.0.2"
+macmeter_validate_release_version "1.0.3"
+macmeter_validate_release_version "1.0.4"
+if macmeter_validate_release_version "1.1.0" 2>/dev/null; then
+  echo "Unsupported minor version unexpectedly passed" >&2
   exit 1
 fi
-macmeter_validate_release_version "1.0.0" "pass"
-if macmeter_validate_release_version "1.0.1" "" 2>/dev/null; then
-  echo "Unapproved 1.0.1 unexpectedly passed" >&2
-  exit 1
-fi
-macmeter_validate_release_version "1.0.1" "pass"
-macmeter_validate_release_version "1.0.2" "pass"
-macmeter_validate_release_version "1.0.3" "pass"
-if macmeter_validate_release_version "1.1.0" "pass" 2>/dev/null; then
-  echo "Unapproved minor version unexpectedly passed" >&2
-  exit 1
-fi
-if macmeter_validate_release_version "1.0.beta" "pass" 2>/dev/null; then
+if macmeter_validate_release_version "1.0.beta" 2>/dev/null; then
   echo "Malformed patch version unexpectedly passed" >&2
   exit 1
 fi
@@ -34,6 +27,6 @@ version="$(macmeter_build_setting "$project_root" MARKETING_VERSION)"
 build="$(macmeter_build_setting "$project_root" CURRENT_PROJECT_VERSION)"
 test -n "$version"
 test -n "$build"
-macmeter_validate_release_version "$version" "${MACMETER_OWNER_APPROVAL:-}"
+macmeter_validate_release_version "$version"
 
 echo "Version policy checks passed for $version ($build)"

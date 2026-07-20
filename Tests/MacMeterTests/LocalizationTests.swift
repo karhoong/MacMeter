@@ -37,6 +37,6 @@ final class LocalizationTests: XCTestCase {
 
         let japanese = Localizer(selection: .japanese)
         XCTAssertEqual(japanese.languageTitle(.japanese), "日本語")
-        XCTAssertEqual(japanese.version(AppVersionInfo(version: "1.0.3", build: "1")), "バージョン 1.0.3 (1)")
+        XCTAssertEqual(japanese.version(AppVersionInfo(version: "1.0.4", build: "1")), "バージョン 1.0.4 (1)")
     }
 }

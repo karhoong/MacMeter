@@ -5,13 +5,14 @@ project_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$project_root"
 
 cache_root="/tmp/macmeter-qa-cache"
-timing_evidence="$project_root/QA/latest-timing.json"
-privacy_evidence="$project_root/QA/latest-runtime-privacy.json"
+timing_evidence="$project_root/build/qa/latest-timing.json"
+privacy_evidence="$project_root/build/qa/latest-runtime-privacy.json"
 qa_commit="$(git rev-parse HEAD)"
 qa_started_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 qa_hardware="$(sysctl -n machdep.cpu.brand_string)"
 qa_dirty=false
 if [[ -n "$(git status --porcelain)" ]]; then qa_dirty=true; fi
+mkdir -p "$(dirname "$timing_evidence")"
 rm -f "$timing_evidence"
 rm -f "$privacy_evidence"
 bash Scripts/test-version-policy.sh

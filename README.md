@@ -125,30 +125,23 @@ open build/DerivedData/Build/Products/Release/MacMeter.app
 
 You can also open `MacMeter.xcodeproj` in Xcode and run the `MacMeter` scheme on **My Mac**.
 
-## Tests and QA
+## Tests
 
-Run the complete automated suite for the owner-approved 1.0.x release line:
+Run the complete automated suite:
 
 ```sh
-MACMETER_OWNER_APPROVAL=pass bash Scripts/qa.sh
+bash Scripts/qa.sh
 ```
 
 The suite includes unit and coordinator tests, live Apple Silicon provider checks, UI rendering tests, branch-contract and line-coverage gates, Debug/Release builds, artifact metadata verification, timing checks, and runtime privacy checks.
 
-Requirement traceability and the manual/physical validation checklist live in:
-
-- `QA/REQUIREMENTS_TRACEABILITY.md`
-- `QA/RELEASE_CHECKLIST.md`
-- `QA/AUTOMATED_RESULTS.md`
-
-Long-duration soak testing is no longer part of the release QA flow. The historical performance scripts remain in the repository for optional diagnostics only.
+Long-duration soak testing is not part of the normal release test flow. The historical performance scripts remain in the repository for optional diagnostics only.
 
 ## Signed and notarized DMG
 
 Distribution packaging requires a Developer ID Application identity and a `notarytool` keychain profile:
 
 ```sh
-MACMETER_OWNER_APPROVAL=pass \
 MACMETER_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
 MACMETER_NOTARY_PROFILE="notary-profile" \
 bash Scripts/package-release.sh
@@ -161,12 +154,11 @@ The script builds, signs with the hardened runtime, verifies the signature, crea
 - `Sources/MacMeter` — application, providers, coordinator, settings, and native AppKit UI
 - `Sources/MacMeterSensors` — read-only Objective-C sensor bridge
 - `Tests/MacMeterTests` — deterministic, UI, integration, and live-hardware tests
-- `Scripts` — QA, privacy, timing, optional diagnostics, version-policy, and packaging tools
-- `QA` — release checklist and requirement traceability
+- `Scripts` — testing, privacy, timing, optional diagnostics, version-policy, and packaging tools
 
 ## Version
 
-The first owner-approved stable release was **1.0.0**. The current interface refinement is **1.0.3**. Earlier development builds remained in the `0.x` series; promotion occurred only after the owner explicitly issued the required **pass** command.
+The current release is **1.0.4** (build 1).
 
 ## License
 

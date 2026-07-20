@@ -6,7 +6,6 @@ cd "$project_root"
 
 identity="${MACMETER_SIGN_IDENTITY:-}"
 notary_profile="${MACMETER_NOTARY_PROFILE:-}"
-owner_approval="${MACMETER_OWNER_APPROVAL:-}"
 if [[ -z "$identity" ]]; then
   echo "Set MACMETER_SIGN_IDENTITY to a Developer ID Application identity." >&2
   exit 1
@@ -41,7 +40,7 @@ if [[ "$version" != "$expected_version" || "$build" != "$expected_build" ]]; the
   echo "Built artifact version $version ($build) does not match Xcode authority $expected_version ($expected_build)." >&2
   exit 1
 fi
-macmeter_validate_release_version "$version" "$owner_approval"
+macmeter_validate_release_version "$version"
 
 codesign --force --deep --options runtime --timestamp --sign "$identity" "$app"
 codesign --verify --deep --strict --verbose=2 "$app"

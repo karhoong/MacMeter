@@ -2,7 +2,7 @@
 set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
-evidence="${1:-$project_root/QA/latest-runtime-privacy.json}"
+evidence="${1:-$project_root/build/qa/latest-runtime-privacy.json}"
 app="${MACMETER_APP_PATH:-$project_root/build/DerivedData/Build/Products/Release/MacMeter.app}"
 executable="$app/Contents/MacOS/MacMeter"
 observer_tool="/usr/sbin/lsof"

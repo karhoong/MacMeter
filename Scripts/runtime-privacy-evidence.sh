@@ -3,7 +3,7 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "$0")/.." && pwd)"
 app="${MACMETER_APP_PATH:-$project_root/build/DerivedData/Build/Products/Release/MacMeter.app}"
-evidence="${MACMETER_PRIVACY_EVIDENCE:-$project_root/QA/latest-runtime-privacy.json}"
+evidence="${MACMETER_PRIVACY_EVIDENCE:-$project_root/build/qa/latest-runtime-privacy.json}"
 requested_duration="${MACMETER_PRIVACY_DURATION_SECONDS:-10}"
 sample_interval=1
 executable="$app/Contents/MacOS/MacMeter"
