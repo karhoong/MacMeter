@@ -462,7 +462,7 @@ final class NativePopoverViewController: NSViewController {
         batteryPowerRow.value = MetricFormatting.battery(reading)
         batteryPowerRow.valueColor = Self.batteryColor(reading.direction)
         section.setAccentColor(Self.batteryColor(reading.direction))
-        batteryPowerRow.setAccessibilityLabel(MetricAccessibility.battery(reading))
+        batteryPowerRow.setAccessibilityLabel(settings.localizer.batteryAccessibility(reading))
     }
 
     private func localizedUnavailableReason(_ reason: String?) -> String {

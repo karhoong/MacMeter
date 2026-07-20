@@ -126,13 +126,7 @@ enum StatusItemLabelBuilder {
                 return "\(l.text(.inbound)) \(inbound) \(settings.networkUnit.rawValue), \(l.text(.outbound)) \(outbound) \(settings.networkUnit.rawValue)"
             case .battery:
                 guard let reading = coordinator.battery.value else { return "\(l.text(.batteryPower)) \(l.text(.unavailable))" }
-                let direction: String
-                switch reading.direction {
-                case .charging: direction = l.text(.charging)
-                case .draining: direction = l.text(.draining)
-                case .idle: direction = l.text(.idle)
-                }
-                return "\(l.text(.batteryPower)), \(direction), \(MetricFormatting.decimal(reading.watts)) W"
+                return l.batteryAccessibility(reading)
             }
         }.joined(separator: ", ")
     }

@@ -147,9 +147,9 @@ final class NativePopoverViewControllerTests: XCTestCase {
         let controller = makeController(fixture)
         let root = controller.view
         let cases: [(BatteryPowerReading, String, NSColor, String)] = [
-            (BatteryPowerReading(watts: 30, direction: .charging), "C 30W", .systemGreen, "Battery Charging, 30 watts"),
-            (BatteryPowerReading(watts: 8.4, direction: .draining), "D 8.4W", .systemRed, "Battery Draining, 8.4 watts"),
-            (BatteryPowerReading(watts: 0, direction: .idle), "— 0W", .systemBlue, "Battery Idle, 0 watts")
+            (BatteryPowerReading(watts: 30, direction: .charging), "C 30W", .systemGreen, "Battery power, Charging, 30 watts"),
+            (BatteryPowerReading(watts: 8.4, direction: .draining), "D 8.4W", .systemRed, "Battery power, Draining, 8.4 watts"),
+            (BatteryPowerReading(watts: 0, direction: .idle), "— 0W", .systemBlue, "Battery power, Idle, 0 watts")
         ]
 
         for (reading, expectedValue, expectedColor, expectedAccessibility) in cases {
@@ -166,6 +166,49 @@ final class NativePopoverViewControllerTests: XCTestCase {
             XCTAssertEqual(valueLabel.stringValue, expectedValue)
             XCTAssertEqual(valueLabel.textColor, expectedColor)
             XCTAssertEqual(row.accessibilityLabel(), expectedAccessibility)
+        }
+    }
+
+    func testBatteryAccessibilityUsesEverySelectedLanguage() throws {
+        let fixture = makeFixture()
+        defer { fixture.cleanup() }
+        let controller = makeController(fixture)
+        let root = controller.view
+        let expected: [(AppLanguage, String)] = [
+            (.english, "Battery power, Charging, 30 watts"),
+            (.simplifiedChinese, "电池功率, 充电, 30 瓦"),
+            (.traditionalChinese, "電池功率, 充電, 30 瓦"),
+            (.japanese, "バッテリー電力, 充電中, 30 ワット"),
+            (.korean, "배터리 전력, 충전 중, 30 와트"),
+            (.spanish, "Potencia de batería, Cargando, 30 vatios"),
+            (.french, "Puissance de la batterie, En charge, 30 watts"),
+            (.german, "Batterieleistung, Laden, 30 Watt"),
+            (.portuguese, "Potência da bateria, A carregar, 30 watts"),
+            (.italian, "Potenza batteria, In carica, 30 watt"),
+            (.russian, "Мощность батареи, Зарядка, 30 ватт"),
+            (.arabic, "طاقة البطارية, شحن, 30 واط"),
+            (.hindi, "बैटरी पावर, चार्ज हो रहा, 30 वाट"),
+            (.malay, "Kuasa bateri, Mengecas, 30 watt"),
+            (.indonesian, "Daya baterai, Mengisi, 30 watt"),
+            (.thai, "พลังงานแบตเตอรี่, กำลังชาร์จ, 30 วัตต์"),
+            (.vietnamese, "Công suất pin, Đang sạc, 30 watt")
+        ]
+
+        fixture.battery.result = .available(
+            BatteryPowerReading(watts: 30, direction: .charging),
+            sampledAt: fixture.sampledAt
+        )
+        fixture.coordinator.sampleNow(at: fixture.sampledAt)
+
+        for (language, expectedAccessibility) in expected {
+            fixture.settings.language = language
+            controller.refreshFromModel()
+            let valueLabel = try label(
+                in: root,
+                identifier: NativePopoverViewController.Identifier.value(.battery, "Power")
+            )
+            let row = try XCTUnwrap(valueLabel.superview as? NativePopoverValueRowView)
+            XCTAssertEqual(row.accessibilityLabel(), expectedAccessibility, "Language: \(language.rawValue)")
         }
     }
 

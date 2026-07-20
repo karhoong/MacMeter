@@ -165,6 +165,36 @@ struct Localizer: Equatable {
         "\(text(.version)) \(info.version) (\(info.build))"
     }
 
+    func batteryAccessibility(_ reading: BatteryPowerReading) -> String {
+        let direction: L10nKey
+        switch reading.direction {
+        case .charging: direction = .charging
+        case .draining: direction = .draining
+        case .idle: direction = .idle
+        }
+        return "\(text(.batteryPower)), \(text(direction)), \(MetricFormatting.decimal(reading.watts)) \(Self.wattUnits[language] ?? "watts")"
+    }
+
+    private static let wattUnits: [AppLanguage: String] = [
+        .english: "watts",
+        .simplifiedChinese: "瓦",
+        .traditionalChinese: "瓦",
+        .japanese: "ワット",
+        .korean: "와트",
+        .spanish: "vatios",
+        .french: "watts",
+        .german: "Watt",
+        .portuguese: "watts",
+        .italian: "watt",
+        .russian: "ватт",
+        .arabic: "واط",
+        .hindi: "वाट",
+        .malay: "watt",
+        .indonesian: "watt",
+        .thai: "วัตต์",
+        .vietnamese: "watt"
+    ]
+
     private static let english: [L10nKey: String] = [
         .systemDefault: "System Default", .settingsWindowTitle: "MacMeter Settings",
         .metrics: "Metrics", .appearance: "Appearance", .general: "General", .about: "About",
